@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -40,6 +42,7 @@ import {
   Select,
   Icon,
   Image,
+  useToast,
 } from "@chakra-ui/react";
 import { motion } from "framer-motion";
 import {
@@ -64,6 +67,20 @@ import {
 } from "react-icons/hi";
 import { keyframes } from "@emotion/react";
 import NotActive from "@/components/NotActive";
+import {
+  ConnectorError,
+  ConnectorErrorType,
+  requestRoninWalletConnector,
+} from "@sky-mavis/tanto-connect";
+import {
+  createPublicClient,
+  http,
+  parseAbi,
+  formatEther,
+  createWalletClient,
+  custom,
+} from "viem";
+import { saigon, ronin } from "viem/chains";
 
 // Framer Motion animations
 const MotionBox = motion.create(Box);
@@ -152,8 +169,23 @@ const bonusRewards = [
   },
 ];
 
+const STAKING_CONTRACT_ADDRESS = process.env
+  .NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS as string;
+const KTTY_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_KTTY_TOKEN_ADDRESS as string;
+const currentChain =
+  (process.env.NEXT_PUBLIC_CHAIN as string) === "ronin" ? ronin : saigon;
+
+// ERC20 Token ABI (for RON and KTTY tokens)
+const ERC20_ABI = parseAbi([
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function balanceOf(address account) view returns (uint256)",
+]);
+
 const StakingDashboard = () => {
   const { colorMode, toggleColorMode } = useColorMode();
+  const toast = useToast();
+
   const bgColor = useColorModeValue("white", "gray.800");
   const textColor = useColorModeValue("gray.800", "white");
   const cardBg = useColorModeValue("gray.50", "gray.700");
@@ -170,9 +202,163 @@ const StakingDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
+  const [account, setAccount] = useState<string | null>(null);
+  const [connector, setConnector] = useState<any>(null);
+  const [error, setError] = useState<any>(null);
+  const [publicClient, setPublicClient] = useState<any>(null);
+  const [walletClient, setWalletClient] = useState<any>(null);
+  const [walletDisplay, setWalletDisplay] = useState("");
+  const [balances, setBalances] = useState({ ktty: "0" });
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+
+  const switchChain = async (chainId: any) => {
+    try {
+      await connector?.switchChain(chainId);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getRoninWalletConnector = async () => {
+    try {
+      const connector = await requestRoninWalletConnector();
+
+      return connector;
+    } catch (error) {
+      if (error instanceof ConnectorError) {
+        setError(error.name);
+      }
+
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    getRoninWalletConnector().then((connector) => {
+      setConnector(connector);
+    });
+  }, []);
+
+  const handleConnect = async () => {
+    try {
+      if (!connector && error === ConnectorErrorType.PROVIDER_NOT_FOUND) {
+        window.open("https://wallet.roninchain.com", "_blank");
+        return;
+      }
+
+      const connectResult = await connector?.connect();
+
+      if (connectResult) {
+        if (connectResult.chainId !== currentChain.id)
+          switchChain(currentChain.id);
+
+        const provider = await connector.getProvider();
+        const accounts = await connector?.getAccounts();
+
+        const account = accounts[0];
+
+        setAccount(account);
+
+        provider.handleAccountsChanged = (accounts: string[]) => {
+          if (accounts.length === 0) {
+            setIsConnected(false);
+            setAccount(null);
+            setWalletDisplay("");
+            setBalances({ ktty: "0" });
+            setShowWalletMenu(false);
+          } else {
+            setAccount(accounts[0]);
+          }
+        };
+
+        // Create Viem clients
+        const publicClient = createPublicClient({
+          chain: currentChain,
+          transport: http(),
+        });
+
+        const walletClient = createWalletClient({
+          chain: currentChain,
+          transport: custom(provider),
+        });
+
+        setPublicClient(publicClient);
+        setWalletClient(walletClient);
+
+        // Fetch contract data
+        await fetchBalances(publicClient, account);
+
+        setIsConnected(true);
+
+        toast({
+          title: "Wallet connected",
+          description: "Your wallet has been connected successfully.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    } catch (error) {
+      console.error("Connection error:", error);
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect wallet.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Add this function to fetch token balances
+  const fetchBalances = async (client: any, account: any) => {
+    console.log("Fetching balances for account:", account);
+    try {
+      // Get KTTY balance
+      const kttyBalance = await client.readContract({
+        address: KTTY_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [account],
+      });
+
+      // Format balances
+      setBalances({
+        ktty: formatEther(kttyBalance),
+      });
+
+      // Format address for display (0x1234...5678)
+      setWalletDisplay(
+        `${account.substring(0, 6)}...${account.substring(account.length - 4)}`
+      );
+    } catch (error) {
+      console.error("Error fetching balances:", error);
+    }
+  };
+
+  // Add disconnect function
+  const handleDisconnect = async () => {
+    setAccount(null);
+    setIsConnected(false);
+    setWalletDisplay("");
+    setBalances({ ktty: "0" });
+    setShowWalletMenu(false);
+
+    await connector?.disconnect();
+
+    toast({
+      title: "Wallet disconnected",
+      description: "Your wallet has been disconnected.",
+      status: "info",
+      duration: 3000,
+      isClosable: true,
+    });
+  };
+
   // Mock user data
   const userData = {
-    walletBalance: 2500000,
+    walletBalance: parseFloat(balances.ktty).toLocaleString(),
     stakedAmount: 1000000,
     rewards: {
       ktty: 2000,
@@ -317,6 +503,9 @@ const StakingDashboard = () => {
 
   const bgWG = useColorModeValue("white", "gray.600");
   const bgWG7 = useColorModeValue("white", "gray.700");
+  const clr1 = useColorModeValue("purple.50", "purple.900");
+  const clr2 = useColorModeValue("gray.100", "gray.700");
+  const clr3 = useColorModeValue("gray.200", "gray.600");
 
   return (
     <Container maxW="1400px" py={8}>
@@ -339,19 +528,101 @@ const StakingDashboard = () => {
           >
             {colorMode === "light" ? <FiMoon size={20} /> : <FiSun size={20} />}
           </Button>
-          <Button
-            color={"white"}
-            bg={"#b78af3"}
-            leftIcon={<HiOutlineLightningBolt />}
-            rounded="full"
-            size="md"
-            _hover={{
-              transform: "translateY(-2px)",
-              boxShadow: "lg",
-            }}
-          >
-            Connect Wallet
-          </Button>
+
+          {isConnected ? (
+            <Box position="relative">
+              <Button
+                onClick={() => setShowWalletMenu(!showWalletMenu)}
+                variant="ghost"
+                px={4}
+                bg={clr2}
+                _hover={{ bg: clr3 }}
+                borderRadius="xl"
+                rightIcon={
+                  <Box as="span" ml={1}>
+                    ▼
+                  </Box>
+                }
+              >
+                <HStack spacing={2}>
+                  <Box
+                    w="10px"
+                    h="10px"
+                    borderRadius="full"
+                    bg="green.400"
+                    boxShadow="0 0 0 2px white"
+                  />
+                  <Text>{walletDisplay}</Text>
+                </HStack>
+              </Button>
+
+              {showWalletMenu && (
+                <Box
+                  position="absolute"
+                  top="100%"
+                  right="0"
+                  mt={2}
+                  bg={cardBg}
+                  boxShadow="lg"
+                  borderRadius="xl"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                  p={4}
+                  width="240px"
+                  zIndex={10}
+                >
+                  <VStack align="stretch" spacing={3}>
+                    <Box mb={2}>
+                      <Text fontSize="sm" opacity={0.7}>
+                        Wallet Address
+                      </Text>
+                      <Text fontSize="sm" fontWeight="medium" isTruncated>
+                        {account}
+                      </Text>
+                    </Box>
+
+                    <Divider />
+
+                    <Box>
+                      <HStack justify="space-between" mt={1}>
+                        <Text fontSize="sm">KTTY Balance</Text>
+                        <Text fontSize="sm" fontWeight="bold">
+                          {parseFloat(balances.ktty).toLocaleString()}
+                        </Text>
+                      </HStack>
+                    </Box>
+
+                    <Divider />
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      colorScheme="red"
+                      onClick={handleDisconnect}
+                      leftIcon={<Box as="span">⏻</Box>}
+                    >
+                      Disconnect Wallet
+                    </Button>
+                  </VStack>
+                </Box>
+              )}
+            </Box>
+          ) : (
+            <Button
+              onClick={handleConnect}
+              color={"white"}
+              bg={"#b78af3"}
+              leftIcon={<HiOutlineLightningBolt />}
+              rounded="full"
+              size="md"
+              _hover={{
+                transform: "translateY(-2px)",
+                boxShadow: "lg",
+              }}
+            >
+              Connect Wallet
+            </Button>
+          )}
         </HStack>
       </Flex>
 
@@ -424,7 +695,7 @@ const StakingDashboard = () => {
                     <StatLabel>Wallet Balance</StatLabel>
                     <HStack>
                       <StatNumber>
-                        {formatNumber(userData.walletBalance)} KTTY
+                        {formatNumber(parseFloat(userData.walletBalance))} KTTY
                       </StatNumber>
                       <Tooltip label="Available for staking">
                         <Icon as={FiAlertCircle} color="gray.500" />
@@ -626,7 +897,7 @@ const StakingDashboard = () => {
                       Min: 1,000,000 KTTY
                     </Text>
                     <Text fontSize="sm" color="gray.500">
-                      Balance: {formatNumber(userData.walletBalance)} KTTY
+                      Balance: {formatNumber(parseFloat(userData.walletBalance))} KTTY
                     </Text>
                   </HStack>
                 </Box>
