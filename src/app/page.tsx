@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -43,6 +42,13 @@ import {
   Icon,
   Image,
   useToast,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  MenuDivider,
+  Progress,
+  Spinner,
 } from "@chakra-ui/react";
 import { motion } from "framer-motion";
 import {
@@ -57,7 +63,13 @@ import {
   FiUsers,
   FiCopy,
   FiArrowRight,
+  FiGift,
+  FiCheck,
+  FiInfo,
+  FiMoreVertical,
+  FiExternalLink,
 } from "react-icons/fi";
+import { HiOutlineGift } from "react-icons/hi";
 import {
   HiOutlineCurrencyDollar,
   HiOutlineChartBar,
@@ -81,6 +93,8 @@ import {
   custom,
 } from "viem";
 import { saigon, ronin } from "viem/chains";
+import moment from "moment";
+import { abi } from "@/lib/abi.json";
 
 // Framer Motion animations
 const MotionBox = motion.create(Box);
@@ -93,55 +107,23 @@ const shimmer = keyframes`
 `;
 
 // Tier data
-const stakingTiers = [
-  {
-    id: 1,
-    name: "Tier 1",
-    range: "1M - 2.9M $KTTY",
-    lockup: "30 days",
-    rewards: "0.2% fixed in $KTTY",
-    color: "#3182CE",
-    badges: ["Entry Level"],
-  },
-  {
-    id: 2,
-    name: "Tier 2",
-    range: "3M - 5.9M $KTTY",
-    lockup: "60 days",
-    rewards: "0.4% fixed in $KTTY + $ZEE",
-    color: "#38A169",
-    badges: ["Intermediate"],
-  },
-  {
-    id: 3,
-    name: "Tier 3",
-    range: "6M+ $KTTY",
-    lockup: "90 days",
-    rewards: "1% fixed in $KTTY + $ZEE + KEV-AI + $REAL + $PAW",
-    color: "#DD6B20",
-    badges: ["Advanced"],
-  },
-  {
-    id: 4,
-    name: "Diamond",
-    range: "10M+ $KTTY",
-    lockup: "90 Days",
-    rewards: "1.5% fixed APR",
-    color: "#319795",
-    badges: ["Premium", "Diamond"],
-  },
-  {
-    id: 5,
-    name: "Platinum",
-    range: "20M+ $KTTY",
-    lockup: "180+ Days",
-    rewards: "2.5% fixed APR",
-    color: "#805AD5",
-    badges: ["Elite", "Platinum"],
-  },
-];
+type StakingTier = {
+  id: number;
+  name: string;
+  range: string;
+  lockup: string;
+  rewards: string;
+  color: string;
+  badges: string[];
+  apy: number;
+  minStake: number;
+  maxStake: number;
+  reward_tokens: {
+    address: string;
+    symbol: string;
+  }[];
+};
 
-// Bonus data
 const bonusRewards = [
   {
     name: "Stacking Boost",
@@ -182,6 +164,26 @@ const ERC20_ABI = parseAbi([
   "function balanceOf(address account) view returns (uint256)",
 ]);
 
+// Pulse animation for claim button
+const pulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(49, 151, 149, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(49, 151, 149, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(49, 151, 149, 0); }
+`;
+
+type StakeStatus = "active" | "ready-to-claim" | "claimed";
+type Stake = {
+  id: number;
+  amount: number;
+  lockupPeriod: number;
+  startDate: string;
+  endDate: string;
+  tier: number;
+  status: StakeStatus;
+  rewards: Record<string, number>;
+  progress: number;
+};
+
 const StakingDashboard = () => {
   const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
@@ -193,13 +195,10 @@ const StakingDashboard = () => {
   const borderColor = useColorModeValue("gray.200", "gray.600");
   const statBg = useColorModeValue("blue.50", "blue.900");
 
-  const [selectedTier, setSelectedTier] = useState<
-    (typeof stakingTiers)[number] | null
-  >(null);
+  const [selectedTier, setSelectedTier] = useState<StakingTier | null>(null);
   const [stakeAmount, setStakeAmount] = useState<string>("");
   const [lockupPeriod, setLockupPeriod] = useState(30);
   const [activeRewards, setActiveRewards] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   const [account, setAccount] = useState<string | null>(null);
@@ -211,6 +210,200 @@ const StakingDashboard = () => {
   const [balances, setBalances] = useState({ ktty: "0" });
   const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [userStakes, setUserStakes] = useState<Stake[]>([]);
+  const [loadingUserStakes, setLoadingUserStakes] = useState(false);
+  const [activeStakesTab, setActiveStakesTab] = useState(0);
+  const [stakingTiers, setStakingTiers] = useState<StakingTier[]>([]);
+  const [loadingStakingTiers, setLoadingStakingTiers] = useState(false);
+
+  useEffect(() => {
+    async function fetchTiers() {
+      try {
+        setLoadingStakingTiers(true);
+        const response = await fetch("/api/get-tiers");
+        const data = await response.json();
+        const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
+        const tiers: StakingTier[] = data.tiers.map(
+          (tier: any, idx: number) => {
+            const min_stake = formatEther(tier.min_stake);
+            const max_stake = formatEther(tier.max_stake);
+            const lockupInDays = tier.lockup_period / (24 * 60 * 60);
+            const apy = parseFloat((tier.apy / 100000).toFixed(1));
+            let rewardText = "$KTTY";
+            if (tier.reward_tokens.length > 0) {
+              rewardText =
+                rewardText +
+                " + " +
+                tier.reward_tokens
+                  .map((token: any) => token.symbol)
+                  .join(" + ");
+            }
+            return {
+              id: tier.id,
+              name: tier.name,
+              range: `${min_stake} - ${max_stake} $KTTY`,
+              lockup: `${lockupInDays} days`,
+              apy: apy,
+              rewards: `${apy}% fixed in ${rewardText}`,
+              color: colors[idx % colors.length],
+              badges: [`Tier ${tier.id}`],
+              reward_tokens: tier.reward_tokens,
+              minStake: parseFloat(min_stake),
+              maxStake: parseFloat(max_stake),
+            };
+          }
+        );
+        // sort by id
+        tiers.sort((a, b) => a.id - b.id);
+        setStakingTiers(tiers);
+      } finally {
+        setLoadingStakingTiers(false);
+      }
+    }
+    fetchTiers();
+  }, []);
+
+  // New state for stake details modal
+  const [selectedStake, setSelectedStake] = useState<Stake | null>(null);
+  const {
+    isOpen: isStakeDetailsOpen,
+    onOpen: onStakeDetailsOpen,
+    onClose: onStakeDetailsClose,
+  } = useDisclosure();
+
+  // New state for claim rewards modal
+  const {
+    isOpen: isClaimRewardsOpen,
+    onOpen: onClaimRewardsOpen,
+    onClose: onClaimRewardsClose,
+  } = useDisclosure();
+
+  // Calculate total staked
+  const calculateTotalStaked = () => {
+    return userStakes.reduce((total, stake) => {
+      if (stake.status !== "claimed") {
+        return total + stake.amount;
+      }
+      return total;
+    }, 0);
+  };
+
+  // Calculate total pending rewards
+  const calculateTotalPendingRewards = () => {
+    return userStakes.reduce((total, stake) => {
+      if (stake.status !== "claimed") {
+        return total + (stake.rewards.KTTY ?? 0);
+      }
+      return total;
+    }, 0);
+  };
+
+  const calculateOtherPendingRewards = () => {
+    return userStakes.reduce((total, stake) => {
+      if (stake.status !== "claimed") {
+        for (const key of Object.keys(stake.rewards)) {
+          if (key !== "KTTY") {
+            total[key] = (total[key] || 0) + stake.rewards[key];
+          }
+        }
+      }
+      return total;
+    }, {} as Record<string, number>);
+  };
+
+  const otherPendingRewards = calculateOtherPendingRewards();
+
+  // Calculate total claimed rewards
+  const calculateTotalClaimedRewards = () => {
+    return userStakes.reduce((total, stake) => {
+      if (stake.status === "claimed") {
+        return total + (stake.rewards.KTTY ?? 0);
+      }
+      return total;
+    }, 0);
+  };
+
+  // Filter stakes based on active tab
+  const getFilteredStakes = () => {
+    switch (activeStakesTab) {
+      case 0: // All
+        return userStakes;
+      case 1: // Active
+        return userStakes.filter((stake) => stake.status === "active");
+      case 2: // Ready to Claim
+        return userStakes.filter((stake) => stake.status === "ready-to-claim");
+      case 3: // Claimed
+        return userStakes.filter((stake) => stake.status === "claimed");
+      default:
+        return userStakes;
+    }
+  };
+
+  // Format date
+  const formatDate = (dateString: string | number | Date) => {
+    return moment(dateString).format("MMM D, YYYY");
+  };
+
+  // Calculate time remaining for a stake
+  const calculateTimeRemaining = (endDate: string) => {
+    const end = new Date(endDate);
+    const now = new Date();
+    const diff = end.getTime() - now.getTime();
+
+    if (diff <= 0) return "Completed";
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    return `${days}d ${hours}h`;
+  };
+
+  // Handle stake details view
+  const viewStakeDetails = (stakeId: number) => {
+    const stake = userStakes.find((s) => s.id === stakeId);
+    if (!stake) return;
+
+    setSelectedStake(stake);
+    onStakeDetailsOpen();
+  };
+
+  // Handle claim rewards
+  const handleClaimRewards = (stakeId: number) => {
+    // Find the stake
+    const stake = userStakes.find((s) => s.id === stakeId);
+    if (!stake) return;
+
+    // Set it as the selected stake for the modal
+    setSelectedStake(stake);
+    onClaimRewardsOpen();
+  };
+
+  // Function to confirm and process the claim
+  const confirmClaimRewards = () => {
+    if (!selectedStake) return;
+
+    // Update the stake status in the state
+    const updatedStakes = userStakes.map((stake) => {
+      if (stake.id === selectedStake.id) {
+        return {
+          ...stake,
+          status: "claimed" as StakeStatus,
+        };
+      }
+      return stake;
+    });
+
+    setUserStakes(updatedStakes);
+    onClaimRewardsClose();
+
+    toast({
+      title: "Rewards Claimed",
+      description: `You have successfully claimed rewards for stake #${selectedStake.id}.`,
+      status: "success",
+      duration: 5000,
+      isClosable: true,
+    });
+  };
 
   const switchChain = async (chainId: any) => {
     try {
@@ -223,13 +416,11 @@ const StakingDashboard = () => {
   const getRoninWalletConnector = async () => {
     try {
       const connector = await requestRoninWalletConnector();
-
       return connector;
     } catch (error) {
       if (error instanceof ConnectorError) {
         setError(error.name);
       }
-
       return null;
     }
   };
@@ -286,8 +477,8 @@ const StakingDashboard = () => {
         setPublicClient(publicClient);
         setWalletClient(walletClient);
 
-        // Fetch contract data
         await fetchBalances(publicClient, account);
+        await fetchStakes(account);
 
         setIsConnected(true);
 
@@ -308,6 +499,20 @@ const StakingDashboard = () => {
         duration: 3000,
         isClosable: true,
       });
+    }
+  };
+
+  const fetchStakes = async (account: string) => {
+    try {
+      setLoadingUserStakes(true);
+      const response = await fetch(`/api/get-stakes?owner=${account}`);
+      const data = await response.json();
+      console.log("Fetched stakes:", data);
+      setUserStakes(data.stakes);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingUserStakes(false);
     }
   };
 
@@ -337,6 +542,106 @@ const StakingDashboard = () => {
     }
   };
 
+  const [stakeLoading, setStakeLoading] = useState(false);
+  const handleConfirmStake = async () => {
+    try {
+      setStakeLoading(true);
+
+      if (!walletClient || !publicClient) {
+        toast({
+          title: "Wallet client not initialized",
+          description: "Please connect your wallet.",
+          status: "warning",
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      if (!selectedTier) {
+        toast({
+          title: "Tier not selected",
+          description: "Please select a staking tier.",
+          status: "warning",
+          duration: 3000,
+          isClosable: true,
+        });
+        return;
+      }
+
+      // Approve amount
+      console.log("selectedTier", selectedTier);
+      console.log("stakeAmount", stakeAmount);
+      const amount = BigInt(
+        parseFloat(stakeAmount.replace(/,/g, "")) * 10 ** 18
+      );
+      const hash1 = await walletClient.writeContract({
+        account: account,
+        address: KTTY_TOKEN_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [STAKING_CONTRACT_ADDRESS, amount],
+      });
+      toast({
+        title: "Approval submitted",
+        description: `Approval transaction submitted.`,
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+      // Wait for transaction confirmation
+      await publicClient.waitForTransactionReceipt({ hash: hash1 });
+      toast({
+        title: "Approval successful",
+        description: `You've approved KTTY for staking.`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Stake amount
+      const hash2 = await walletClient.writeContract({
+        account: account,
+        address: STAKING_CONTRACT_ADDRESS,
+        abi: abi,
+        functionName: "stake",
+        args: [amount, selectedTier.id],
+      });
+
+      toast({
+        title: "Staking in progress",
+        description: "Your staking transaction is being processed.",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+
+      // Wait for transaction confirmation
+      await publicClient.waitForTransactionReceipt({ hash: hash2 });
+
+      toast({
+        title: "Staking successful",
+        description: `You've successfully staked ${stakeAmount} KTTY.`,
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+
+      onClose();
+    } catch (error) {
+      console.error(`Error staking:`, error);
+      toast({
+        title: "Staking failed",
+        description: `Failed to stake KTTY.`,
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setStakeLoading(false);
+    }
+  };
+
   // Add disconnect function
   const handleDisconnect = async () => {
     setAccount(null);
@@ -359,63 +664,50 @@ const StakingDashboard = () => {
   // Mock user data
   const userData = {
     walletBalance: parseFloat(balances.ktty).toLocaleString(),
-    stakedAmount: 1000000,
     rewards: {
-      ktty: 2000,
-      zee: 500,
-      kevAi: 100,
-      real: 200,
-      paw: 150,
+      ktty: 0,
+      zee: 0,
+      kevAi: 0,
+      real: 0,
+      paw: 0,
     },
-    stakingHistory: [
-      {
-        id: 1,
-        amount: 1000000,
-        lockupPeriod: 30,
-        startDate: "2025-03-15",
-        endDate: "2025-04-14",
-        tier: 1,
-        status: "active",
-      },
-    ],
-    referrals: 3,
-    referralRewards: 1500,
-    stakingStreak: 45,
+    referrals: 0,
+    referralRewards: 0,
   };
-
-  // Simulate loading
-  useEffect(() => {
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 1500);
-  }, []);
 
   // Set active rewards based on the staking amount and lockup period
   useEffect(() => {
     if (stakeAmount && lockupPeriod) {
       const amount = parseFloat(stakeAmount.replace(/,/g, ""));
-      let tier = 1;
       let rewards = ["$KTTY"];
 
-      if (amount >= 1000000 && amount < 3000000) {
-        tier = 1;
-        rewards = ["$KTTY"];
-      } else if (amount >= 3000000 && amount < 6000000) {
-        tier = 2;
-        rewards = ["$KTTY", "$ZEE"];
-      } else if (amount >= 6000000 && amount < 10000000) {
-        tier = 3;
-        rewards = ["$KTTY", "$ZEE", "KEV-AI", "$REAL", "$PAW"];
-      } else if (amount >= 10000000 && amount < 20000000) {
-        tier = 4;
-        rewards = ["$KTTY"];
-      } else if (amount >= 20000000) {
-        tier = 5;
-        rewards = ["$KTTY"];
+      // Determine the tier based on the amount and lockup period
+      for (let i = 0; i < stakingTiers.length; i++) {
+        const tierData = stakingTiers[i];
+        const min = tierData.minStake;
+        const max = tierData.maxStake;
+        if (amount >= min && amount <= max) {
+          rewards = rewards.concat(
+            tierData.reward_tokens.map((token) => token.symbol)
+          );
+          setSelectedTier(stakingTiers[i]);
+          setActiveRewards(rewards);
+          return;
+        }
       }
 
-      setSelectedTier(stakingTiers[tier - 1]);
-      setActiveRewards(rewards);
+      const minTier = stakingTiers[0];
+      const maxTier = stakingTiers[stakingTiers.length - 1];
+
+      if (amount < minTier.minStake) {
+        setSelectedTier(null);
+        setActiveRewards([]);
+      } else if (amount > maxTier.maxStake) {
+        setSelectedTier(maxTier);
+        setActiveRewards(
+          rewards.concat(maxTier.reward_tokens.map((token) => token.symbol))
+        );
+      }
     }
   }, [stakeAmount, lockupPeriod]);
 
@@ -424,26 +716,11 @@ const StakingDashboard = () => {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   };
 
-  // Calculate APR
-  const calculateAPR = () => {
-    if (!stakeAmount) return 0;
-    const amount = parseFloat(stakeAmount.replace(/,/g, ""));
-
-    if (amount >= 20000000 && lockupPeriod >= 180) return 2.5;
-    if (amount >= 10000000 && lockupPeriod >= 90) return 1.5;
-    if (amount >= 6000000 && lockupPeriod >= 90) return 1.0;
-    if (amount >= 3000000 && lockupPeriod >= 60) return 0.4;
-    if (amount >= 1000000 && lockupPeriod >= 30) return 0.2;
-
-    return 0;
-  };
-
   // Calculate expected rewards
   const calculateExpectedRewards = () => {
-    if (!stakeAmount) return 0;
+    if (!stakeAmount || !selectedTier) return 0;
     const amount = parseFloat(stakeAmount.replace(/,/g, ""));
-    const apr = calculateAPR();
-    return ((amount * apr) / 100) * (lockupPeriod / 365);
+    return (amount * selectedTier.apy) / 100 + amount;
   };
 
   // Generate referral link
@@ -456,23 +733,7 @@ const StakingDashboard = () => {
 
   // Lock-up period options based on selected amount
   const getLockupOptions = () => {
-    const amount = parseFloat(stakeAmount?.replace(/,/g, "") || "0");
-
-    if (amount >= 20000000) return [30, 60, 90, 180, 360];
-    if (amount >= 10000000) return [30, 60, 90, 180];
-    if (amount >= 6000000) return [30, 60, 90];
-    if (amount >= 3000000) return [30, 60];
-    return [30];
-  };
-
-  // Get the right tier based on amount and lockup
-  const getTierFromAmount = (amount: number) => {
-    if (amount >= 20000000) return 5;
-    if (amount >= 10000000) return 4;
-    if (amount >= 6000000) return 3;
-    if (amount >= 3000000) return 2;
-    if (amount >= 1000000) return 1;
-    return 0;
+    return [30, 60, 90, 180, 360];
   };
 
   // Handle staking process
@@ -503,9 +764,12 @@ const StakingDashboard = () => {
 
   const bgWG = useColorModeValue("white", "gray.600");
   const bgWG7 = useColorModeValue("white", "gray.700");
-  const clr1 = useColorModeValue("purple.50", "purple.900");
   const clr2 = useColorModeValue("gray.100", "gray.700");
   const clr3 = useColorModeValue("gray.200", "gray.600");
+  const activeBg = useColorModeValue("green.50", "green.900");
+  const claimableBg = useColorModeValue("orange.50", "orange.900");
+  const claimedBg = useColorModeValue("gray.100", "gray.600");
+  const tokenColors = ["blue", "green", "purple", "cyan", "orange", "gray"];
 
   return (
     <Container maxW="1400px" py={8}>
@@ -657,99 +921,101 @@ const StakingDashboard = () => {
               <Heading size="md" mb={4} color={textColor}>
                 Your Stats
               </Heading>
+              <VStack spacing={4} align="stretch">
+                <Stat bg={statBg} p={3} borderRadius="lg">
+                  <StatLabel>Wallet Balance</StatLabel>
+                  <HStack>
+                    <StatNumber>{userData.walletBalance} KTTY</StatNumber>
+                    <Tooltip label="Available for staking">
+                      <Icon as={FiAlertCircle} color="gray.500" />
+                    </Tooltip>
+                  </HStack>
+                </Stat>
 
-              {isLoading ? (
-                <VStack spacing={4} align="stretch">
-                  {[1, 2, 3].map((i) => (
-                    <Box
-                      key={i}
-                      h="20px"
-                      bg="gray.200"
-                      _dark={{ bg: "gray.600" }}
-                      borderRadius="md"
-                      position="relative"
-                      overflow="hidden"
-                      _after={{
-                        content: '""',
-                        position: "absolute",
-                        top: 0,
-                        left: 0,
-                        width: "100%",
-                        height: "100%",
-                        backgroundImage: `linear-gradient(to right, transparent, ${
-                          colorMode === "light"
-                            ? "rgba(226, 232, 240, 0.7)"
-                            : "rgba(45, 55, 72, 0.7)"
-                        }, transparent)`,
-                        backgroundSize: "80vw 100%",
-                        backgroundRepeat: "no-repeat",
-                        backgroundPosition: "-80vw 0",
-                        animation: `${shimmer} 1.5s infinite`,
-                      }}
-                    ></Box>
-                  ))}
-                </VStack>
-              ) : (
-                <VStack spacing={4} align="stretch">
-                  <Stat bg={statBg} p={3} borderRadius="lg">
-                    <StatLabel>Wallet Balance</StatLabel>
-                    <HStack>
+                {loadingUserStakes ? (
+                  <>
+                    <Spinner />
+                  </>
+                ) : (
+                  <>
+                    <Stat bg={statBg} p={3} borderRadius="lg">
+                      <StatLabel>Total Staked</StatLabel>
                       <StatNumber>
-                        {formatNumber(parseFloat(userData.walletBalance))} KTTY
+                        {formatNumber(calculateTotalStaked())} KTTY
                       </StatNumber>
-                      <Tooltip label="Available for staking">
-                        <Icon as={FiAlertCircle} color="gray.500" />
-                      </Tooltip>
-                    </HStack>
-                  </Stat>
+                    </Stat>
 
-                  <Stat bg={statBg} p={3} borderRadius="lg">
-                    <StatLabel>Total Staked</StatLabel>
-                    <StatNumber>
-                      {formatNumber(userData.stakedAmount)} KTTY
-                    </StatNumber>
-                    <StatHelpText>
-                      <HStack>
-                        <Icon as={FiTrendingUp} />
-                        <Text>
-                          Tier {getTierFromAmount(userData.stakedAmount)}
-                        </Text>
-                      </HStack>
-                    </StatHelpText>
-                  </Stat>
+                    <Stat bg={statBg} p={3} borderRadius="lg">
+                      <StatLabel>Pending Rewards</StatLabel>
+                      <StatNumber>
+                        {formatNumber(calculateTotalPendingRewards())} KTTY
+                      </StatNumber>
+                      <StatHelpText
+                        hidden={Object.keys(otherPendingRewards).length === 0}
+                      >
+                        <HStack wrap="wrap" spacing={2}>
+                          {Object.keys(otherPendingRewards).map(
+                            (key, index) => {
+                              const color =
+                                tokenColors[index % tokenColors.length];
+                              return (
+                                <Badge key={key} colorScheme={color}>
+                                  {otherPendingRewards[key]} {key}
+                                </Badge>
+                              );
+                            }
+                          )}
+                        </HStack>
+                      </StatHelpText>
+                      {userStakes.some(
+                        (stake) => stake.status === "ready-to-claim"
+                      ) && (
+                        <StatHelpText>
+                          <Badge
+                            colorScheme="orange"
+                            variant="solid"
+                            px={2}
+                            py={1}
+                          >
+                            Rewards Ready to Claim
+                          </Badge>
+                        </StatHelpText>
+                      )}
+                    </Stat>
 
-                  <Stat bg={statBg} p={3} borderRadius="lg">
-                    <StatLabel>Rewards Earned</StatLabel>
-                    <StatNumber>
-                      {formatNumber(userData.rewards.ktty)} KTTY
-                    </StatNumber>
-                    <StatHelpText>
-                      <HStack wrap="wrap" spacing={2}>
-                        {userData.rewards.zee > 0 && (
-                          <Badge colorScheme="green">
-                            {userData.rewards.zee} ZEE
-                          </Badge>
-                        )}
-                        {userData.rewards.kevAi > 0 && (
-                          <Badge colorScheme="purple">
-                            {userData.rewards.kevAi} KEV-AI
-                          </Badge>
-                        )}
-                        {userData.rewards.real > 0 && (
-                          <Badge colorScheme="blue">
-                            {userData.rewards.real} REAL
-                          </Badge>
-                        )}
-                        {userData.rewards.paw > 0 && (
-                          <Badge colorScheme="orange">
-                            {userData.rewards.paw} PAW
-                          </Badge>
-                        )}
-                      </HStack>
-                    </StatHelpText>
-                  </Stat>
-                </VStack>
-              )}
+                    <Stat bg={statBg} p={3} borderRadius="lg">
+                      <StatLabel>Rewards Earned</StatLabel>
+                      <StatNumber>
+                        {formatNumber(calculateTotalClaimedRewards())} KTTY
+                      </StatNumber>
+                      <StatHelpText>
+                        <HStack wrap="wrap" spacing={2}>
+                          {userData.rewards.zee > 0 && (
+                            <Badge colorScheme="green">
+                              {userData.rewards.zee} ZEE
+                            </Badge>
+                          )}
+                          {userData.rewards.kevAi > 0 && (
+                            <Badge colorScheme="purple">
+                              {userData.rewards.kevAi} KEV-AI
+                            </Badge>
+                          )}
+                          {userData.rewards.real > 0 && (
+                            <Badge colorScheme="blue">
+                              {userData.rewards.real} REAL
+                            </Badge>
+                          )}
+                          {userData.rewards.paw > 0 && (
+                            <Badge colorScheme="orange">
+                              {userData.rewards.paw} PAW
+                            </Badge>
+                          )}
+                        </HStack>
+                      </StatHelpText>
+                    </Stat>
+                  </>
+                )}
+              </VStack>
             </MotionBox>
 
             {/* Rewards Card */}
@@ -768,9 +1034,69 @@ const StakingDashboard = () => {
                     Referral Program
                   </Heading>
 
-                  {isLoading ? (
+                  <VStack spacing={4} align="stretch">
+                    <HStack justify="space-between">
+                      <Text>Total Referrals</Text>
+                      <Text fontWeight="bold">{userData.referrals}</Text>
+                    </HStack>
+
+                    <HStack justify="space-between">
+                      <Text>Rewards Earned</Text>
+                      <Text fontWeight="bold">
+                        {formatNumber(userData.referralRewards)} KTTY
+                      </Text>
+                    </HStack>
+
+                    <InputGroup size="md">
+                      <Input
+                        value={referralLink}
+                        isReadOnly
+                        pr="4.5rem"
+                        bg={bgWG}
+                        isDisabled
+                      />
+                      <InputRightElement width="4.5rem">
+                        <Button
+                          h="1.75rem"
+                          size="sm"
+                          onClick={copyReferralLink}
+                          leftIcon={<FiCopy />}
+                          isDisabled
+                        >
+                          Copy
+                        </Button>
+                      </InputRightElement>
+                    </InputGroup>
+
+                    <Text fontSize="sm" color="gray.500">
+                      Earn 0.1% of friends&apos; stake in KTTY + bonus ZEE for
+                      3+ month stakes!
+                    </Text>
+                  </VStack>
+                </MotionBox>
+              </NotActive>
+            </Box>
+
+            {/* Your Stakes Card */}
+            <MotionBox
+              p={6}
+              bg={cardBg}
+              borderRadius="xl"
+              boxShadow="lg"
+              border="1px"
+              borderColor={borderColor}
+              variants={itemVariants}
+            >
+              <Heading size="md" mb={4} color={textColor}>
+                Your Stakes
+              </Heading>
+
+              {loadingUserStakes ? (
+                <VStack spacing={4} align="stretch">
+                  {[1, 2].map((i) => (
                     <Box
-                      h="100px"
+                      key={i}
+                      h="60px"
                       bg="gray.200"
                       _dark={{ bg: "gray.600" }}
                       borderRadius="md"
@@ -794,50 +1120,245 @@ const StakingDashboard = () => {
                         animation: `${shimmer} 1.5s infinite`,
                       }}
                     />
-                  ) : (
-                    <VStack spacing={4} align="stretch">
-                      <HStack justify="space-between">
-                        <Text>Total Referrals</Text>
-                        <Text fontWeight="bold">{userData.referrals}</Text>
-                      </HStack>
-
-                      <HStack justify="space-between">
-                        <Text>Rewards Earned</Text>
-                        <Text fontWeight="bold">
-                          {formatNumber(userData.referralRewards)} KTTY
-                        </Text>
-                      </HStack>
-
-                      <InputGroup size="md">
-                        <Input
-                          value={referralLink}
-                          isReadOnly
-                          pr="4.5rem"
-                          bg={bgWG}
-                          isDisabled
-                        />
-                        <InputRightElement width="4.5rem">
-                          <Button
-                            h="1.75rem"
-                            size="sm"
-                            onClick={copyReferralLink}
-                            leftIcon={<FiCopy />}
-                            isDisabled
-                          >
-                            Copy
-                          </Button>
-                        </InputRightElement>
-                      </InputGroup>
-
-                      <Text fontSize="sm" color="gray.500">
-                        Earn 0.1% of friends&apos; stake in KTTY + bonus ZEE for
-                        3+ month stakes!
-                      </Text>
-                    </VStack>
-                  )}
-                </MotionBox>
-              </NotActive>
-            </Box>
+                  ))}
+                </VStack>
+              ) : userStakes.length > 0 ? (
+                <VStack spacing={4} align="stretch">
+                  <Tabs
+                    variant="soft-rounded"
+                    colorScheme="blue"
+                    size="sm"
+                    onChange={(index) => setActiveStakesTab(index)}
+                  >
+                    <TabList mb={3}>
+                      <Tab>All ({userStakes.length})</Tab>
+                      <Tab>
+                        Active (
+                        {userStakes.filter((s) => s.status === "active").length}
+                        )
+                      </Tab>
+                      <Tab>
+                        Claimable (
+                        {
+                          userStakes.filter(
+                            (s) => s.status === "ready-to-claim"
+                          ).length
+                        }
+                        )
+                      </Tab>
+                      <Tab>
+                        Claimed (
+                        {
+                          userStakes.filter((s) => s.status === "claimed")
+                            .length
+                        }
+                        )
+                      </Tab>
+                    </TabList>
+                    <TabPanels p={0}>
+                      {[0, 1, 2, 3].map((tabIndex) => (
+                        <TabPanel key={tabIndex} p={0}>
+                          <VStack spacing={3} align="stretch">
+                            {getFilteredStakes().length > 0 ? (
+                              getFilteredStakes().map((stake) => (
+                                <Box
+                                  key={stake.id}
+                                  p={3}
+                                  borderRadius="lg"
+                                  bg={
+                                    stake.status === "ready-to-claim"
+                                      ? claimableBg
+                                      : stake.status === "claimed"
+                                      ? claimedBg
+                                      : activeBg
+                                  }
+                                  borderWidth="1px"
+                                  borderColor={
+                                    stake.status === "ready-to-claim"
+                                      ? "orange.200"
+                                      : stake.status === "claimed"
+                                      ? "gray.300"
+                                      : "green.200"
+                                  }
+                                  _dark={{
+                                    borderColor:
+                                      stake.status === "ready-to-claim"
+                                        ? "orange.600"
+                                        : stake.status === "claimed"
+                                        ? "gray.600"
+                                        : "green.600",
+                                  }}
+                                  position="relative"
+                                  transition="all 0.2s"
+                                  _hover={{
+                                    transform: "translateY(-2px)",
+                                    boxShadow: "md",
+                                  }}
+                                >
+                                  <Flex
+                                    justifyContent="space-between"
+                                    alignItems="center"
+                                  >
+                                    <VStack align="start" spacing={0}>
+                                      <HStack>
+                                        <Text fontWeight="bold">
+                                          {formatNumber(stake.amount)} KTTY
+                                        </Text>
+                                        <Badge
+                                          colorScheme={
+                                            stake.status === "ready-to-claim"
+                                              ? "orange"
+                                              : stake.status === "claimed"
+                                              ? "gray"
+                                              : "green"
+                                          }
+                                        >
+                                          {stake.status === "ready-to-claim"
+                                            ? "Ready to Claim"
+                                            : stake.status === "claimed"
+                                            ? "Claimed"
+                                            : "Active"}
+                                        </Badge>
+                                      </HStack>
+                                      <Text fontSize="sm">
+                                        Tier {stake.tier} • {stake.lockupPeriod}{" "}
+                                        days
+                                      </Text>
+                                    </VStack>
+                                    <HStack>
+                                      {stake.status === "ready-to-claim" ? (
+                                        <Button
+                                          size="sm"
+                                          colorScheme="orange"
+                                          leftIcon={<FiGift />}
+                                          onClick={() =>
+                                            handleClaimRewards(stake.id)
+                                          }
+                                          css={{
+                                            animation: `${pulse} 2s infinite`,
+                                          }}
+                                        >
+                                          Claim
+                                        </Button>
+                                      ) : stake.status === "active" ? (
+                                        <Text
+                                          fontSize="sm"
+                                          fontWeight="medium"
+                                          color={
+                                            colorMode === "light"
+                                              ? "green.600"
+                                              : "green.300"
+                                          }
+                                        >
+                                          {calculateTimeRemaining(
+                                            stake.endDate
+                                          )}
+                                        </Text>
+                                      ) : (
+                                        <Icon
+                                          as={FiCheck}
+                                          color="gray.500"
+                                          boxSize={5}
+                                        />
+                                      )}
+                                      <Menu>
+                                        <MenuButton
+                                          as={Button}
+                                          variant="ghost"
+                                          size="sm"
+                                          aria-label="Options"
+                                        >
+                                          <FiMoreVertical />
+                                        </MenuButton>
+                                        <MenuList>
+                                          <MenuItem
+                                            icon={<FiInfo />}
+                                            onClick={() =>
+                                              viewStakeDetails(stake.id)
+                                            }
+                                          >
+                                            View Details
+                                          </MenuItem>
+                                          {stake.status ===
+                                            "ready-to-claim" && (
+                                            <MenuItem
+                                              icon={<FiGift />}
+                                              onClick={() =>
+                                                handleClaimRewards(stake.id)
+                                              }
+                                            >
+                                              Claim Rewards
+                                            </MenuItem>
+                                          )}
+                                          <MenuDivider />
+                                          <MenuItem
+                                            icon={<FiExternalLink />}
+                                            isDisabled
+                                          >
+                                            View on Explorer
+                                          </MenuItem>
+                                        </MenuList>
+                                      </Menu>
+                                    </HStack>
+                                  </Flex>
+                                  <Progress
+                                    value={stake.progress}
+                                    size="xs"
+                                    colorScheme={
+                                      stake.status === "ready-to-claim"
+                                        ? "orange"
+                                        : stake.status === "claimed"
+                                        ? "gray"
+                                        : "green"
+                                    }
+                                    borderRadius="full"
+                                    mt={2}
+                                  />
+                                </Box>
+                              ))
+                            ) : (
+                              <Box
+                                p={4}
+                                textAlign="center"
+                                bg={bgWG}
+                                borderRadius="lg"
+                              >
+                                <Text>No stakes found in this category.</Text>
+                              </Box>
+                            )}
+                          </VStack>
+                        </TabPanel>
+                      ))}
+                    </TabPanels>
+                  </Tabs>
+                </VStack>
+              ) : (
+                <Box
+                  p={6}
+                  textAlign="center"
+                  bg={bgWG}
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                  borderStyle="dashed"
+                >
+                  <VStack spacing={4}>
+                    <Icon as={FiLock} boxSize={8} color="gray.400" />
+                    <Text>
+                      You don&apos;t have any active stakes yet. Start staking
+                      to earn rewards!
+                    </Text>
+                    <Button
+                      colorScheme="blue"
+                      size="sm"
+                      leftIcon={<HiOutlineLightningBolt />}
+                    >
+                      Stake Now
+                    </Button>
+                  </VStack>
+                </Box>
+              )}
+            </MotionBox>
           </MotionFlex>
         </GridItem>
 
@@ -897,7 +1418,7 @@ const StakingDashboard = () => {
                       Min: 1,000,000 KTTY
                     </Text>
                     <Text fontSize="sm" color="gray.500">
-                      Balance: {formatNumber(parseFloat(userData.walletBalance))} KTTY
+                      Balance: {userData.walletBalance} KTTY
                     </Text>
                   </HStack>
                 </Box>
@@ -933,7 +1454,7 @@ const StakingDashboard = () => {
                       <Icon as={FiTrendingUp} color={accentColor} />
                       <Text>APR</Text>
                     </HStack>
-                    <Text fontWeight="bold">{calculateAPR()}%</Text>
+                    <Text fontWeight="bold">{selectedTier?.apy ?? 0}%</Text>
                   </HStack>
 
                   <HStack justify="space-between" mb={2}>
@@ -942,8 +1463,7 @@ const StakingDashboard = () => {
                       <Text>Est. Rewards</Text>
                     </HStack>
                     <Text fontWeight="bold">
-                      {formatNumber(Math.floor(calculateExpectedRewards()))}{" "}
-                      KTTY
+                      {calculateExpectedRewards().toLocaleString()} each
                     </Text>
                   </HStack>
 
@@ -956,19 +1476,7 @@ const StakingDashboard = () => {
                       {activeRewards.map((token, index) => (
                         <Badge
                           key={index}
-                          colorScheme={
-                            token === "$KTTY"
-                              ? "blue"
-                              : token === "$ZEE"
-                              ? "green"
-                              : token === "KEV-AI"
-                              ? "purple"
-                              : token === "$REAL"
-                              ? "cyan"
-                              : token === "$PAW"
-                              ? "orange"
-                              : "gray"
-                          }
+                          colorScheme={tokenColors[index % tokenColors.length]}
                         >
                           {token}
                         </Badge>
@@ -982,7 +1490,11 @@ const StakingDashboard = () => {
                     width="full"
                     isDisabled={
                       !stakeAmount ||
-                      parseFloat(stakeAmount.replace(/,/g, "")) < 1000000
+                      parseFloat(stakeAmount.replace(/,/g, "")) <
+                        stakingTiers[0].minStake ||
+                      parseFloat(stakeAmount.replace(/,/g, "")) >
+                        parseFloat(userData.walletBalance.replace(/,/g, "")) ||
+                      !isConnected
                     }
                     onClick={handleStake}
                     leftIcon={<FiLock />}
@@ -1009,7 +1521,14 @@ const StakingDashboard = () => {
                 Staking Tiers
               </Heading>
 
-              <Tabs variant="soft-rounded" colorScheme="blue" isLazy>
+              <Spinner hidden={!loadingStakingTiers} />
+
+              <Tabs
+                hidden={loadingStakingTiers}
+                variant="soft-rounded"
+                colorScheme="blue"
+                isLazy
+              >
                 <TabList
                   mb={4}
                   overflowX="auto"
@@ -1110,18 +1629,8 @@ const StakingDashboard = () => {
                           rightIcon={<FiArrowRight />}
                           onClick={() => {
                             // Set the minimum stake amount for this tier
-                            if (tier.id === 1) setStakeAmount("1000000");
-                            if (tier.id === 2) setStakeAmount("3000000");
-                            if (tier.id === 3) setStakeAmount("6000000");
-                            if (tier.id === 4) setStakeAmount("10000000");
-                            if (tier.id === 5) setStakeAmount("20000000");
-
-                            // Set the appropriate lockup period
-                            if (tier.id === 1) setLockupPeriod(30);
-                            if (tier.id === 2) setLockupPeriod(60);
-                            if (tier.id === 3) setLockupPeriod(90);
-                            if (tier.id === 4) setLockupPeriod(90);
-                            if (tier.id === 5) setLockupPeriod(180);
+                            setStakeAmount(tier.minStake.toString());
+                            setLockupPeriod(parseInt(tier.lockup));
                           }}
                         >
                           Stake at this tier
@@ -1214,9 +1723,9 @@ const StakingDashboard = () => {
                 <Heading size="md">{lockupPeriod} Days</Heading>
                 <Text fontSize="sm" color="gray.500">
                   Ends on:{" "}
-                  {new Date(
-                    Date.now() + lockupPeriod * 24 * 60 * 60 * 1000
-                  ).toLocaleDateString()}
+                  {moment(
+                    new Date(Date.now() + lockupPeriod * 24 * 60 * 60 * 1000)
+                  ).format("MMMM Do YYYY")}
                 </Text>
               </Box>
 
@@ -1231,19 +1740,7 @@ const StakingDashboard = () => {
                   {activeRewards.map((token, index) => (
                     <Badge
                       key={index}
-                      colorScheme={
-                        token === "$KTTY"
-                          ? "blue"
-                          : token === "$ZEE"
-                          ? "green"
-                          : token === "KEV-AI"
-                          ? "purple"
-                          : token === "$REAL"
-                          ? "cyan"
-                          : token === "$PAW"
-                          ? "orange"
-                          : "gray"
-                      }
+                      colorScheme={tokenColors[index % tokenColors.length]}
                     >
                       {token}
                     </Badge>
@@ -1255,10 +1752,10 @@ const StakingDashboard = () => {
                 <Text fontSize="sm" color="gray.500">
                   Expected APR
                 </Text>
-                <Heading size="md">{calculateAPR()}%</Heading>
+                <Heading size="md">{selectedTier?.apy ?? 0}%</Heading>
                 <Text fontSize="sm" color="gray.500">
-                  Est. {formatNumber(Math.floor(calculateExpectedRewards()))}{" "}
-                  KTTY in rewards
+                  Est. {calculateExpectedRewards().toLocaleString()} each in
+                  rewards
                 </Text>
               </Box>
             </VStack>
@@ -1269,12 +1766,272 @@ const StakingDashboard = () => {
               Cancel
             </Button>
             <Button
+              onClick={handleConfirmStake}
               colorScheme="blue"
               leftIcon={<FiLock />}
               _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
               transition="all 0.2s"
+              isLoading={stakeLoading}
             >
               Confirm Stake
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Stake Details Modal */}
+      <Modal
+        isOpen={isStakeDetailsOpen}
+        onClose={onStakeDetailsClose}
+        isCentered
+        size="md"
+      >
+        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+        <ModalContent bg={bgColor} borderRadius="xl" boxShadow="xl">
+          <ModalHeader>Stake Details</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {selectedStake && (
+              <VStack spacing={4} align="stretch">
+                <Box p={4} bg={cardBg} borderRadius="lg">
+                  <Text fontSize="sm" color="gray.500">
+                    Stake ID
+                  </Text>
+                  <Heading size="md">#{selectedStake.id}</Heading>
+                  <Badge
+                    mt={2}
+                    colorScheme={
+                      selectedStake.status === "ready-to-claim"
+                        ? "orange"
+                        : selectedStake.status === "claimed"
+                        ? "gray"
+                        : "green"
+                    }
+                  >
+                    {selectedStake.status === "ready-to-claim"
+                      ? "Ready to Claim"
+                      : selectedStake.status === "claimed"
+                      ? "Claimed"
+                      : "Active"}
+                  </Badge>
+                </Box>
+
+                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                  <Box p={4} bg={cardBg} borderRadius="lg">
+                    <Text fontSize="sm" color="gray.500">
+                      Amount
+                    </Text>
+                    <Heading size="md">
+                      {formatNumber(selectedStake.amount)} KTTY
+                    </Heading>
+                  </Box>
+
+                  <Box p={4} bg={cardBg} borderRadius="lg">
+                    <Text fontSize="sm" color="gray.500">
+                      Tier
+                    </Text>
+                    <Heading size="md">Tier {selectedStake.tier}</Heading>
+                  </Box>
+                </Grid>
+
+                <Grid templateColumns="repeat(2, 1fr)" gap={4}>
+                  <Box p={4} bg={cardBg} borderRadius="lg">
+                    <Text fontSize="sm" color="gray.500">
+                      Start Date
+                    </Text>
+                    <Text fontWeight="bold">
+                      {formatDate(selectedStake.startDate)}
+                    </Text>
+                  </Box>
+
+                  <Box p={4} bg={cardBg} borderRadius="lg">
+                    <Text fontSize="sm" color="gray.500">
+                      End Date
+                    </Text>
+                    <Text fontWeight="bold">
+                      {formatDate(selectedStake.endDate)}
+                    </Text>
+                  </Box>
+                </Grid>
+
+                <Box p={4} bg={cardBg} borderRadius="lg">
+                  <Text fontSize="sm" color="gray.500">
+                    Progress
+                  </Text>
+                  <HStack justify="space-between" mb={2}>
+                    <Text fontWeight="bold">
+                      {selectedStake.progress}% Complete
+                    </Text>
+                    {selectedStake.status === "active" && (
+                      <Text fontSize="sm">
+                        {calculateTimeRemaining(selectedStake.endDate)}{" "}
+                        remaining
+                      </Text>
+                    )}
+                  </HStack>
+                  <Progress
+                    value={selectedStake.progress}
+                    colorScheme={
+                      selectedStake.status === "ready-to-claim"
+                        ? "orange"
+                        : selectedStake.status === "claimed"
+                        ? "gray"
+                        : "green"
+                    }
+                    borderRadius="full"
+                    size="sm"
+                  />
+                </Box>
+
+                <Box p={4} bg={cardBg} borderRadius="lg">
+                  <Text fontSize="sm" color="gray.500" mb={2}>
+                    Rewards
+                  </Text>
+                  <VStack align="stretch" spacing={2}>
+                    {Object.keys(selectedStake.rewards).map((key) => {
+                      const value = selectedStake.rewards[key];
+                      if (value > 0) {
+                        return (
+                          <HStack key={key} justify="space-between">
+                            <Text>{key}</Text>
+                            <Text fontWeight="bold">{value.toLocaleString()}</Text>
+                          </HStack>
+                        );
+                      }
+                    })}
+                  </VStack>
+                </Box>
+              </VStack>
+            )}
+          </ModalBody>
+
+          <ModalFooter>
+            <Button colorScheme="gray" mr={3} onClick={onStakeDetailsClose}>
+              Close
+            </Button>
+            {selectedStake && selectedStake.status === "ready-to-claim" && (
+              <Button
+                colorScheme="orange"
+                leftIcon={<FiGift />}
+                onClick={() => {
+                  onStakeDetailsClose();
+                  handleClaimRewards(selectedStake.id);
+                }}
+              >
+                Claim Rewards
+              </Button>
+            )}
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Claim Rewards Modal */}
+      <Modal
+        isOpen={isClaimRewardsOpen}
+        onClose={onClaimRewardsClose}
+        isCentered
+        size="md"
+      >
+        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
+        <ModalContent bg={bgColor} borderRadius="xl" boxShadow="xl">
+          <ModalHeader>Claim Rewards</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            {selectedStake && (
+              <VStack spacing={4} align="stretch">
+                <Box p={6} textAlign="center">
+                  <Icon
+                    as={HiOutlineGift}
+                    boxSize={16}
+                    color="orange.400"
+                    mb={4}
+                    _dark={{ color: "orange.300" }}
+                  />
+                  <Heading size="md" mb={3}>
+                    Your Rewards are Ready!
+                  </Heading>
+                  <Text>
+                    You can now claim the rewards for your stake of{" "}
+                    <b>{formatNumber(selectedStake.amount)} KTTY</b>.
+                  </Text>
+                </Box>
+
+                <Box p={4} bg={cardBg} borderRadius="lg">
+                  <Text fontSize="sm" color="gray.500" mb={3}>
+                    You will receive:
+                  </Text>
+
+                  <VStack align="stretch" spacing={3}>
+                    <HStack
+                      justify="space-between"
+                      p={3}
+                      bg={bgWG}
+                      borderRadius="md"
+                    >
+                      <HStack>
+                        <Icon as={HiOutlineCurrencyDollar} color="blue.500" />
+                        <Text>KTTY</Text>
+                      </HStack>
+                      <Text fontWeight="bold">
+                        {formatNumber(selectedStake.rewards.KTTY ?? 0)}
+                      </Text>
+                    </HStack>
+                    {Object.keys(selectedStake.rewards).map((key, idx) => {
+                      const value = selectedStake.rewards[key];
+                      const color = tokenColors[idx % tokenColors.length];
+                      if (value > 0 && key !== "KTTY") {
+                        return (
+                          <HStack
+                            key={key}
+                            justify="space-between"
+                            p={3}
+                            bg={bgWG}
+                            borderRadius="md"
+                          >
+                            <HStack>
+                              <Icon as={HiOutlineFire} color={`${color}.500`} />
+                              <Text>{key}</Text>
+                            </HStack>
+                            <Text fontWeight="bold">
+                              {formatNumber(value)}
+                            </Text>
+                          </HStack>
+                        );
+                      }
+                    })}
+                  </VStack>
+                </Box>
+
+                <Box
+                  p={4}
+                  bg="orange.50"
+                  _dark={{ bg: "orange.900" }}
+                  borderRadius="lg"
+                >
+                  <HStack>
+                    <Icon as={FiInfo} color="orange.500" />
+                    <Text fontSize="sm">
+                      After claiming, you can choose to restake your rewards for
+                      additional APR boost.
+                    </Text>
+                  </HStack>
+                </Box>
+              </VStack>
+            )}
+          </ModalBody>
+
+          <ModalFooter>
+            <Button colorScheme="gray" mr={3} onClick={onClaimRewardsClose}>
+              Cancel
+            </Button>
+            <Button
+              colorScheme="orange"
+              leftIcon={<HiOutlineGift />}
+              onClick={confirmClaimRewards}
+              _hover={{ transform: "translateY(-2px)", boxShadow: "lg" }}
+              transition="all 0.2s"
+            >
+              Claim Rewards
             </Button>
           </ModalFooter>
         </ModalContent>

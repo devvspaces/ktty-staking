@@ -26,12 +26,7 @@ export async function GET(request: Request) {
     if (data!.length < BATCH) break;
   }
 
-  const amount = stakes.reduce((acc, stake) => {
-    const amount = BigInt(stake.amount);
-    return acc + amount;
-  }, BigInt(0));
-
   return Response.json({
-    total_staked: amount,
+    stakes,
   });
 }
