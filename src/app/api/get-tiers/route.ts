@@ -21,7 +21,7 @@ export async function GET() {
     
   if (tierError) {
     console.error('Error fetching tiers:', tierError);
-    return [];
+    return Response.json({ error: "Failed to fetch tiers" }, { status: 500 });
   }
 
   return Response.json({
