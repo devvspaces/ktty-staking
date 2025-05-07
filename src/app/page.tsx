@@ -87,7 +87,6 @@ import {
 import {
   createPublicClient,
   http,
-  parseAbi,
   formatEther,
   createWalletClient,
   custom,
@@ -95,6 +94,7 @@ import {
 import { saigon, ronin } from "viem/chains";
 import moment from "moment";
 import { abi } from "@/lib/abi.json";
+import { ERC20_ABI } from "@/lib/utils";
 
 // Framer Motion animations
 const MotionBox = motion.create(Box);
@@ -156,13 +156,6 @@ const STAKING_CONTRACT_ADDRESS = process.env
 const KTTY_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_KTTY_TOKEN_ADDRESS as string;
 const currentChain =
   (process.env.NEXT_PUBLIC_CHAIN as string) === "ronin" ? ronin : saigon;
-
-// ERC20 Token ABI (for RON and KTTY tokens)
-const ERC20_ABI = parseAbi([
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function balanceOf(address account) view returns (uint256)",
-]);
 
 // Pulse animation for claim button
 const pulse = keyframes`

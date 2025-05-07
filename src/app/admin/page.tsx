@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Flex,
@@ -87,6 +89,8 @@ import {
   ModalBody,
   AlertIcon,
   ModalFooter,
+  useToast,
+  Spinner,
 } from "@chakra-ui/react";
 import { css } from "@emotion/react";
 import { motion } from "framer-motion";
@@ -119,6 +123,21 @@ import {
   HiOutlineShieldCheck,
   HiOutlineLightningBolt,
 } from "react-icons/hi";
+import {
+  ConnectorError,
+  ConnectorErrorType,
+  requestRoninWalletConnector,
+} from "@sky-mavis/tanto-connect";
+import {
+  createPublicClient,
+  http,
+  formatEther,
+  createWalletClient,
+  custom,
+} from "viem";
+import { saigon, ronin } from "viem/chains";
+import { abi } from "@/lib/abi.json";
+import { ERC20_ABI } from "@/lib/utils";
 
 // Define types
 type TierType = {
@@ -170,12 +189,30 @@ const fadeIn = {
   },
 };
 
+const STAKING_CONTRACT_ADDRESS = process.env
+  .NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS as string;
+const currentChain =
+  (process.env.NEXT_PUBLIC_CHAIN as string) === "ronin" ? ronin : saigon;
+
 const AdminDashboard: React.FC = () => {
   // Chakra hooks
   const { colorMode, toggleColorMode } = useColorMode();
-  const { isOpen: isOpenSetting, onOpen: onOpenSettings, onClose: onCloseSettings } = useDisclosure();
-  const { isOpen: isOpenReports, onOpen: onOpenReports, onClose: onCloseReports } = useDisclosure();
-  const { isOpen: isOpenWallet, onOpen: onOpenWallet, onClose: onCloseWallet } = useDisclosure();
+  const toast = useToast();
+  const {
+    isOpen: isOpenSetting,
+    onOpen: onOpenSettings,
+    onClose: onCloseSettings,
+  } = useDisclosure();
+  const {
+    isOpen: isOpenReports,
+    onOpen: onOpenReports,
+    onClose: onCloseReports,
+  } = useDisclosure();
+  const {
+    isOpen: isOpenWallet,
+    onOpen: onOpenWallet,
+    onClose: onCloseWallet,
+  } = useDisclosure();
 
   // Color mode values
   const bgColor = useColorModeValue("white", "gray.800");
@@ -338,45 +375,242 @@ const AdminDashboard: React.FC = () => {
       status: "completed",
     },
   ]);
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+
+  // clients
+  const [publicClient, setPublicClient] = useState<any>(null);
+  const [walletClient, setWalletClient] = useState<any>(null);
+
+  useEffect(() => {
+    async function fetchDashboard() {
+      try {
+        setLoadingDashboard(true);
+        const response = await fetch("/api/get-dashboard", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        });
+        if (!response.ok) {
+          toast({
+            title: "Error",
+            description: "Failed to fetch dashboard data",
+            status: "error",
+            duration: 3000,
+            isClosable: true,
+          });
+        }
+        const data = await response.json();
+        console.log(data);
+        setDashboardData(data);
+        setLoadingDashboard(false);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+      } finally {
+        setLoadingDashboard(false);
+      }
+    }
+    fetchDashboard();
+  }, [toast]);
 
   // Token balances
-  const [tokenBalances, setTokenBalances] = useState<TokenBalanceType[]>([
-    {
-      symbol: "KTTY",
-      name: "Kitty Token",
-      balance: 5000000,
-      required: 4000000,
-      color: "blue",
-    },
-    {
-      symbol: "ZEE",
-      name: "Zee Token",
-      balance: 150000,
-      required: 120000,
-      color: "green",
-    },
-    {
-      symbol: "KEV-AI",
-      name: "Kevin AI Token",
-      balance: 20000,
-      required: 35000,
-      color: "purple",
-    },
-    {
-      symbol: "REAL",
-      name: "Real Token",
-      balance: 45000,
-      required: 40000,
-      color: "cyan",
-    },
-    {
-      symbol: "PAW",
-      name: "Paw Token",
-      balance: 30000,
-      required: 28000,
-      color: "orange",
-    },
-  ]);
+  const tokenColors = useMemo(() => {
+    return ["blue", "green", "purple", "cyan", "orange", "red", "pink", "teal"];
+  }, []);
+  const [tokenBalances, setTokenBalances] = useState<TokenBalanceType[]>([]);
+  const [fetchingTokenBalances, setFetchingTokenBalances] = useState(true);
+  const [error, setError] = useState<any>(null);
+  const [connector, setConnector] = useState<any>(null);
+  const [walletDisplay, setWalletDisplay] = useState("");
+  const [showWalletMenu, setShowWalletMenu] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const [account, setAccount] = useState<string | null>(null);
+
+  const switchChain = async (chainId: any) => {
+    try {
+      await connector?.switchChain(chainId);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const getRoninWalletConnector = async () => {
+    try {
+      const connector = await requestRoninWalletConnector();
+      return connector;
+    } catch (error) {
+      if (error instanceof ConnectorError) {
+        setError(error.name);
+      }
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    getRoninWalletConnector().then((connector) => {
+      setConnector(connector);
+    });
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (!connector && error === ConnectorErrorType.PROVIDER_NOT_FOUND) {
+        window.open("https://wallet.roninchain.com", "_blank");
+        return;
+      }
+      // Create Viem clients
+      const publicClient = createPublicClient({
+        chain: currentChain,
+        transport: http(),
+      });
+
+      setPublicClient(publicClient);
+    } catch (error) {
+      console.error("Connection error:", error);
+    }
+  }, [connector, error]);
+
+  const handleConnect = async () => {
+    try {
+      if (!connector && error === ConnectorErrorType.PROVIDER_NOT_FOUND) {
+        window.open("https://wallet.roninchain.com", "_blank");
+        return;
+      }
+
+      const connectResult = await connector?.connect();
+
+      if (connectResult) {
+        if (connectResult.chainId !== currentChain.id)
+          switchChain(currentChain.id);
+
+        const provider = await connector.getProvider();
+        const accounts = await connector?.getAccounts();
+
+        const account = accounts[0];
+
+        setAccount(account);
+
+        provider.handleAccountsChanged = (accounts: string[]) => {
+          if (accounts.length === 0) {
+            setIsConnected(false);
+            setAccount(null);
+            setWalletDisplay("");
+            setShowWalletMenu(false);
+          } else {
+            setAccount(accounts[0]);
+          }
+        };
+
+        // Format address for display (0x1234...5678)
+        setWalletDisplay(
+          `${account.substring(0, 6)}...${account.substring(account.length - 4)}`
+        );
+
+        // Create Viem clients
+        const publicClient = createPublicClient({
+          chain: currentChain,
+          transport: http(),
+        });
+
+        const walletClient = createWalletClient({
+          chain: currentChain,
+          transport: custom(provider),
+        });
+
+        setPublicClient(publicClient);
+        setWalletClient(walletClient);
+
+        setIsConnected(true);
+
+        toast({
+          title: "Wallet connected",
+          description: "Your wallet has been connected successfully.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    } catch (error) {
+      console.error("Connection error:", error);
+      toast({
+        title: "Connection failed",
+        description: "Failed to connect wallet.",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+  
+  // Add disconnect function
+  const handleDisconnect = async () => {
+    setAccount(null);
+    setIsConnected(false);
+    setWalletDisplay("");
+    setShowWalletMenu(false);
+
+    await connector?.disconnect();
+
+    toast({
+      title: "Wallet disconnected",
+      description: "Your wallet has been disconnected.",
+      status: "info",
+      duration: 3000,
+      isClosable: true,
+    });
+  };
+
+  const fetchTokenBalances = useCallback(async () => {
+    if (!publicClient) return;
+    try {
+      setFetchingTokenBalances(true);
+      const response = await fetch("/api/get-reward-tokens-required", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch token balances",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+      const data = await response.json();
+      console.log(data);
+
+      const formatted = await Promise.all(
+        Object.keys(data).map(async (symbol: any, idx: number) => {
+          const balance = await publicClient.readContract({
+            address: data[symbol].address,
+            abi: ERC20_ABI,
+            functionName: "balanceOf",
+            args: [STAKING_CONTRACT_ADDRESS],
+          });
+          return {
+            symbol,
+            name: `${symbol} Token`,
+            balance: parseInt(formatEther(balance)) - data[symbol].stakes,
+            required: data[symbol].amount,
+            color: tokenColors[idx % tokenColors.length],
+          };
+        })
+      );
+      setTokenBalances(formatted);
+    } catch (error) {
+      console.error("Error fetching token balances:", error);
+    } finally {
+      setFetchingTokenBalances(false);
+    }
+  }, [toast, tokenColors, publicClient]);
+
+  useEffect(() => {
+    fetchTokenBalances();
+  }, [fetchTokenBalances]);
 
   // For tier edit
   const [editingTier, setEditingTier] = useState<TierType | null>(null);
@@ -611,6 +845,10 @@ const AdminDashboard: React.FC = () => {
   };
 
   const bgR5R9 = useColorModeValue("red.50", "red.900");
+  const tierColors = ["purple", "teal", "orange", "green", "blue"];
+  
+    const clr2 = useColorModeValue("gray.100", "gray.700");
+    const clr3 = useColorModeValue("gray.200", "gray.600");
 
   return (
     <Flex h="100vh">
@@ -619,6 +857,7 @@ const AdminDashboard: React.FC = () => {
         flex="1"
         overflow="auto"
         bg={useColorModeValue("gray.50", "gray.900")}
+        w={'100%'}
       >
         {/* Navbar */}
         <Flex
@@ -630,6 +869,7 @@ const AdminDashboard: React.FC = () => {
           boxShadow="sm"
           borderBottom="1px"
           borderColor={borderColor}
+          w={'100%'}
         >
           <Text
             fontWeight="bold"
@@ -639,7 +879,7 @@ const AdminDashboard: React.FC = () => {
             KTTY Admin
           </Text>
 
-          <HStack spacing={3}>
+          <HStack spacing={3} w={'100%'}>
             <Tooltip label={colorMode === "light" ? "Dark Mode" : "Light Mode"}>
               <IconButton
                 aria-label="Toggle color mode"
@@ -661,10 +901,100 @@ const AdminDashboard: React.FC = () => {
                 Admin
               </MenuButton>
               <MenuList>
-                <MenuItem onClick={onOpenSettings} icon={<FiSettings size={18} />}>Settings</MenuItem>
+                <MenuItem
+                  onClick={onOpenSettings}
+                  icon={<FiSettings size={18} />}
+                >
+                  Settings
+                </MenuItem>
                 <MenuItem icon={<FiLogOut size={18} />}>Logout</MenuItem>
               </MenuList>
             </Menu>
+
+            {isConnected ? (
+              <Box position="relative" ml={'auto'}>
+                <Button
+                  onClick={() => setShowWalletMenu(!showWalletMenu)}
+                  variant="ghost"
+                  px={4}
+                  bg={clr2}
+                  _hover={{ bg: clr3 }}
+                  borderRadius="xl"
+                  rightIcon={
+                    <Box as="span" ml={1}>
+                      ▼
+                    </Box>
+                  }
+                >
+                  <HStack spacing={2}>
+                    <Box
+                      w="10px"
+                      h="10px"
+                      borderRadius="full"
+                      bg="green.400"
+                      boxShadow="0 0 0 2px white"
+                    />
+                    <Text>{walletDisplay}</Text>
+                  </HStack>
+                </Button>
+
+                {showWalletMenu && (
+                  <Box
+                    position="absolute"
+                    top="100%"
+                    right="0"
+                    mt={2}
+                    bg={cardBg}
+                    boxShadow="lg"
+                    borderRadius="xl"
+                    borderWidth="1px"
+                    borderColor={borderColor}
+                    p={4}
+                    width="240px"
+                    zIndex={10}
+                  >
+                    <VStack align="stretch" spacing={3}>
+                      <Box mb={2}>
+                        <Text fontSize="sm" opacity={0.7}>
+                          Wallet Address
+                        </Text>
+                        <Text fontSize="sm" fontWeight="medium" isTruncated>
+                          {account}
+                        </Text>
+                      </Box>
+
+                      <Divider />
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        colorScheme="red"
+                        onClick={handleDisconnect}
+                        leftIcon={<Box as="span">⏻</Box>}
+                      >
+                        Disconnect Wallet
+                      </Button>
+                    </VStack>
+                  </Box>
+                )}
+              </Box>
+            ) : (
+              <Button
+                ml={'auto'}
+                onClick={handleConnect}
+                color={"white"}
+                bg={"#b78af3"}
+                leftIcon={<HiOutlineLightningBolt />}
+                rounded="full"
+                size="md"
+                _hover={{
+                  transform: "translateY(-2px)",
+                  boxShadow: "lg",
+                }}
+              >
+                Connect Wallet
+              </Button>
+            )}
           </HStack>
         </Flex>
 
@@ -686,16 +1016,16 @@ const AdminDashboard: React.FC = () => {
               `}
               mb={6}
             >
-              <Tab fontWeight="medium" px={5} whiteSpace={'nowrap'}>
+              <Tab fontWeight="medium" px={5} whiteSpace={"nowrap"}>
                 Dashboard
               </Tab>
-              <Tab fontWeight="medium" px={5} whiteSpace={'nowrap'}>
+              <Tab fontWeight="medium" px={5} whiteSpace={"nowrap"}>
                 Tier Management
               </Tab>
-              <Tab fontWeight="medium" px={5} whiteSpace={'nowrap'}>
+              <Tab fontWeight="medium" px={5} whiteSpace={"nowrap"}>
                 Analytics
               </Tab>
-              <Tab fontWeight="medium" px={5} whiteSpace={'nowrap'}>
+              <Tab fontWeight="medium" px={5} whiteSpace={"nowrap"}>
                 Token Management
               </Tab>
             </TabList>
@@ -733,10 +1063,14 @@ const AdminDashboard: React.FC = () => {
                             <Text>Total KTTY Staked</Text>
                           </HStack>
                           <Heading size="lg">
-                            {formatNumber(totalStaked)} KTTY
+                            {formatNumber(
+                              dashboardData?.overview?.totalStaked ?? 0
+                            )}{" "}
+                            KTTY
                           </Heading>
                           <Text mt={2} color="gray.500">
-                            Across {activeStakes} active stakes
+                            Across {dashboardData?.overview?.activeStakes ?? 0}{" "}
+                            active stakes
                           </Text>
                         </CardBody>
                       </Card>
@@ -754,13 +1088,16 @@ const AdminDashboard: React.FC = () => {
                             />
                             <Text>Active Stakes</Text>
                           </HStack>
-                          <Heading size="lg">{activeStakes}</Heading>
+                          <Heading size="lg">
+                            {dashboardData?.overview?.activeStakes ?? 0}
+                          </Heading>
                           <HStack mt={2}>
                             <Text color="gray.500">
-                              Completed: {completedStakes}
+                              Completed:{" "}
+                              {dashboardData?.overview?.completedStakes ?? 0}
                             </Text>
                             <Text color="gray.500">
-                              Total: {activeStakes + completedStakes}
+                              Total: {dashboardData?.overview?.totalStakes ?? 0}
                             </Text>
                           </HStack>
                         </CardBody>
@@ -780,41 +1117,18 @@ const AdminDashboard: React.FC = () => {
                             <Text>Total Rewards Distributed</Text>
                           </HStack>
                           <Heading size="lg">
-                            {formatNumber(totalRewards)} KTTY
+                            {formatNumber(
+                              dashboardData?.overview?.totalRewards?.ktty ?? 0
+                            )}{" "}
+                            KTTY
                           </Heading>
                           <Text mt={2} color="gray.500">
-                            +{formatNumber(Math.floor(totalRewards * 0.1))}{" "}
+                            +
+                            {formatNumber(
+                              dashboardData?.overview?.totalRewards?.other ?? 0
+                            )}{" "}
                             other tokens
                           </Text>
-                        </CardBody>
-                      </Card>
-                    </GridItem>
-
-                    {/* Low Balance Warning */}
-                    <GridItem as={MotionBox} variants={fadeIn}>
-                      <Card bg={bgR5R9} borderColor="red.200" borderWidth="1px">
-                        <CardBody>
-                          <HStack mb={2}>
-                            <Icon
-                              as={FiAlertTriangle}
-                              color="red.500"
-                              boxSize={5}
-                            />
-                            <Text>Low Balance Warning</Text>
-                          </HStack>
-                          <Heading size="lg">KEV-AI Token</Heading>
-                          <HStack mt={2}>
-                            <Text
-                              color={useColorModeValue("red.600", "red.300")}
-                            >
-                              Current: {formatNumber(20000)}
-                            </Text>
-                            <Text
-                              color={useColorModeValue("red.600", "red.300")}
-                            >
-                              Required: {formatNumber(35000)}
-                            </Text>
-                          </HStack>
                         </CardBody>
                       </Card>
                     </GridItem>
@@ -840,11 +1154,19 @@ const AdminDashboard: React.FC = () => {
                             </Button>
                           </HStack>
                         </CardHeader>
-                        <CardBody maxW={{
-                          base: "calc(100vw - 42px)",
-                          md: 'none'
-                        }} overflowX={'scroll'}>
-                          <Table variant="simple" size="sm">
+                        <CardBody
+                          maxW={{
+                            base: "calc(100vw - 42px)",
+                            md: "none",
+                          }}
+                          overflowX={"scroll"}
+                        >
+                          <Spinner hidden={!loadingDashboard} />
+                          <Table
+                            hidden={loadingDashboard}
+                            variant="simple"
+                            size="sm"
+                          >
                             <Thead>
                               <Tr>
                                 <Th>Wallet</Th>
@@ -855,41 +1177,35 @@ const AdminDashboard: React.FC = () => {
                               </Tr>
                             </Thead>
                             <Tbody>
-                              {stakes.slice(0, 5).map((stake) => (
-                                <Tr key={stake.id}>
-                                  <Td>{stake.walletAddress}</Td>
-                                  <Td>{formatNumber(stake.amount)} KTTY</Td>
-                                  <Td>
-                                    <Badge
-                                      colorScheme={
-                                        stake.tier === 5
-                                          ? "purple"
-                                          : stake.tier === 4
-                                          ? "teal"
-                                          : stake.tier === 3
-                                          ? "orange"
-                                          : stake.tier === 2
-                                          ? "green"
-                                          : "blue"
-                                      }
-                                    >
-                                      {stake.tierName}
-                                    </Badge>
-                                  </Td>
-                                  <Td>{stake.startDate}</Td>
-                                  <Td>
-                                    <Badge
-                                      colorScheme={
-                                        stake.status === "active"
-                                          ? "green"
-                                          : "gray"
-                                      }
-                                    >
-                                      {stake.status}
-                                    </Badge>
-                                  </Td>
-                                </Tr>
-                              ))}
+                              {dashboardData?.recentStakes?.map(
+                                (stake: any, idx: number) => (
+                                  <Tr key={idx}>
+                                    <Td>{stake.wallet}</Td>
+                                    <Td>{formatNumber(stake.amount)} KTTY</Td>
+                                    <Td>
+                                      <Badge
+                                        colorScheme={
+                                          tierColors[idx % tierColors.length]
+                                        }
+                                      >
+                                        {stake.tier}
+                                      </Badge>
+                                    </Td>
+                                    <Td>{stake.startDate}</Td>
+                                    <Td>
+                                      <Badge
+                                        colorScheme={
+                                          stake.status === "active"
+                                            ? "green"
+                                            : "gray"
+                                        }
+                                      >
+                                        {stake.status}
+                                      </Badge>
+                                    </Td>
+                                  </Tr>
+                                )
+                              )}
                             </Tbody>
                           </Table>
                         </CardBody>
@@ -902,49 +1218,40 @@ const AdminDashboard: React.FC = () => {
                             Stakes Distribution by Tier
                           </Heading>
                         </CardHeader>
-                        <CardBody>
-                          {tiers.map((tier) => {
-                            const tierStakes = stakes.filter(
-                              (s) => s.tier === tier.id && s.status === "active"
-                            );
-                            const totalInTier = tierStakes.reduce(
-                              (sum, stake) => sum + stake.amount,
-                              0
-                            );
-                            const percentage =
-                              totalStaked > 0
-                                ? (totalInTier / totalStaked) * 100
-                                : 0;
-
-                            return (
-                              <Box key={tier.id} mb={4}>
-                                <Flex justify="space-between" mb={1}>
-                                  <Text fontWeight="medium">{tier.name}</Text>
-                                  <Text>
-                                    {formatNumber(totalInTier)} KTTY (
-                                    {percentage.toFixed(1)}%)
-                                  </Text>
-                                </Flex>
-                                <Progress
-                                  value={percentage}
-                                  size="sm"
-                                  borderRadius="full"
-                                  colorScheme={
-                                    tier.id === 5
-                                      ? "purple"
-                                      : tier.id === 4
-                                      ? "teal"
-                                      : tier.id === 3
-                                      ? "orange"
-                                      : tier.id === 2
-                                      ? "green"
-                                      : "blue"
-                                  }
-                                />
-                              </Box>
-                            );
-                          })}
-                        </CardBody>
+                        <Box p={4}>
+                          <Spinner hidden={!loadingDashboard} />
+                        </Box>
+                        {dashboardData?.stakesDistribution && (
+                          <>
+                            <CardBody hidden={loadingDashboard}>
+                              {Object.values(
+                                dashboardData?.stakesDistribution
+                              ).map((tier: any, idx: number) => {
+                                return (
+                                  <Box key={idx} mb={4}>
+                                    <Flex justify="space-between" mb={1}>
+                                      <Text fontWeight="medium">
+                                        {tier.name}
+                                      </Text>
+                                      <Text>
+                                        {formatNumber(tier.amount)} KTTY (
+                                        {tier.percentage.toFixed(1)}%)
+                                      </Text>
+                                    </Flex>
+                                    <Progress
+                                      value={tier.percentage}
+                                      size="sm"
+                                      borderRadius="full"
+                                      colorScheme={
+                                        tierColors[idx % tierColors.length]
+                                      }
+                                    />
+                                  </Box>
+                                );
+                              })}
+                            </CardBody>
+                          </>
+                        )}
                       </Card>
                     </GridItem>
 
@@ -958,6 +1265,8 @@ const AdminDashboard: React.FC = () => {
                               size="sm"
                               colorScheme="blue"
                               leftIcon={<FiRefreshCw />}
+                              isLoading={fetchingTokenBalances}
+                              onClick={fetchTokenBalances}
                             >
                               Refresh
                             </Button>
@@ -1088,7 +1397,13 @@ const AdminDashboard: React.FC = () => {
                   animate="visible"
                   variants={containerAnimation}
                 >
-                  <Flex justify="space-between" align="center" mb={6} gap={3} wrap={'wrap'}>
+                  <Flex
+                    justify="space-between"
+                    align="center"
+                    mb={6}
+                    gap={3}
+                    wrap={"wrap"}
+                  >
                     <Heading size="lg">Tier Management</Heading>
                     <HStack>
                       <Button
@@ -1247,9 +1562,15 @@ const AdminDashboard: React.FC = () => {
                   animate="visible"
                   variants={containerAnimation}
                 >
-                  <Flex justify="space-between" align="center" mb={6} gap={3} wrap={'wrap'}>
+                  <Flex
+                    justify="space-between"
+                    align="center"
+                    mb={6}
+                    gap={3}
+                    wrap={"wrap"}
+                  >
                     <Heading size="lg">Staking Analytics</Heading>
-                    <HStack wrap={'wrap'}>
+                    <HStack wrap={"wrap"}>
                       <Select
                         width="150px"
                         value={statusFilter}
@@ -1566,7 +1887,13 @@ const AdminDashboard: React.FC = () => {
                   animate="visible"
                   variants={containerAnimation}
                 >
-                  <Flex justify="space-between" align="center" mb={6} wrap={'wrap'} gap={3}>
+                  <Flex
+                    justify="space-between"
+                    align="center"
+                    mb={6}
+                    wrap={"wrap"}
+                    gap={3}
+                  >
                     <Heading size="lg">Token Management</Heading>
                     <HStack>
                       <Button
@@ -2542,9 +2869,13 @@ const AdminDashboard: React.FC = () => {
           />
           <MenuList>
             <MenuItem icon={<FiRefreshCw />}>Sync with Blockchain</MenuItem>
-            <MenuItem onClick={onOpenReports} icon={<FiDownload />}>Generate Report</MenuItem>
+            <MenuItem onClick={onOpenReports} icon={<FiDownload />}>
+              Generate Report
+            </MenuItem>
             <MenuItem icon={<FiAlertTriangle />}>Emergency Pause</MenuItem>
-            <MenuItem onClick={onOpenWallet} icon={<FiLock />}>Lock/Unlock Withdrawals</MenuItem>
+            <MenuItem onClick={onOpenWallet} icon={<FiLock />}>
+              Lock/Unlock Withdrawals
+            </MenuItem>
           </MenuList>
         </Menu>
       </Box>

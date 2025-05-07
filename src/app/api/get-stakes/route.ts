@@ -62,8 +62,6 @@ export async function GET(request: Request) {
     // Current timestamp in seconds
     const currentTime = Math.floor(Date.now() / 1000);
 
-    console.log(stakes)
-    
     // Transform data to match the required format
     const formattedStakes: Stake[] = stakes.map((stake: any) => {
       // Calculate progress (0-100%)
