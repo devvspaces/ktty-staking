@@ -691,7 +691,7 @@ const StakingDashboard = () => {
 
   // Mock user data
   const userData = {
-    walletBalance: parseFloat(balances.ktty).toLocaleString(),
+    walletBalance: parseFloat(balances.ktty),
     rewards: {
       ktty: 0,
       zee: 0,
