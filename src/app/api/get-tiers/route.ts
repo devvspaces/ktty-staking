@@ -55,6 +55,8 @@ export async function GET() {
         
         return {
           ...tier,
+          min_stake: tier.min_stake,
+          max_stake: tier.max_stake,
           active_stakes_count: tierStat.count,
           active_stakes_amount: tierStat.sum,
           reward_tokens: tier.reward_tokens

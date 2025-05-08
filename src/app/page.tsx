@@ -89,6 +89,7 @@ import { saigon, ronin } from "viem/chains";
 import moment from "moment";
 import { abi } from "@/lib/abi.json";
 import { ERC20_ABI } from "@/lib/utils";
+import NotActive from "@/components/NotActive";
 
 // Framer Motion animations
 const MotionBox = motion.create(Box);
@@ -185,8 +186,8 @@ const StakingDashboard = () => {
         const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
         const tiers: StakingTier[] = data.tiers.map(
           (tier: any, idx: number) => {
-            const min_stake = formatEther(tier.min_stake);
-            const max_stake = formatEther(tier.max_stake);
+            const min_stake = parseFloat(formatEther(BigInt(tier.min_stake)));
+            const max_stake = parseFloat(formatEther(BigInt(tier.max_stake)));
             const lockupInDays = tier.lockup_period / (24 * 60 * 60);
             const apy = parseFloat((tier.apy / 100000).toFixed(1));
             let rewardText = "$KTTY";
@@ -201,15 +202,15 @@ const StakingDashboard = () => {
             return {
               id: tier.id,
               name: tier.name,
-              range: `${min_stake} - ${max_stake} $KTTY`,
+              range: `${min_stake.toLocaleString()} - ${max_stake.toLocaleString()} $KTTY`,
               lockup: `${lockupInDays} days`,
               apy: apy,
               rewards: `${apy}% fixed in ${rewardText}`,
               color: colors[idx % colors.length],
               badges: [`Tier ${tier.id}`],
               reward_tokens: tier.reward_tokens,
-              minStake: parseFloat(min_stake),
-              maxStake: parseFloat(max_stake),
+              minStake: min_stake,
+              maxStake: max_stake,
             };
           }
         );
@@ -680,9 +681,8 @@ const StakingDashboard = () => {
   const calculateExpectedRewards = () => {
     if (!stakeAmount || !selectedTier) return 0;
     const amount = parseFloat(stakeAmount.replace(/,/g, ""));
-    return (amount * selectedTier.apy) / 100 + amount;
+    return (amount * selectedTier.apy) / 100;
   };
-
 
   // Lock-up period options based on selected amount
   const getLockupOptions = () => {
@@ -1563,13 +1563,15 @@ const StakingDashboard = () => {
               border="1px"
               borderColor={borderColor}
             >
-              <Image
-                src={"/long.jpg"}
-                alt=""
-                w={"100%"}
-                h={"100%"}
-                objectFit={"cover"}
-              />
+              <NotActive>
+                <Image
+                  src={"/long.jpg"}
+                  alt=""
+                  w={"100%"}
+                  h={"100%"}
+                  objectFit={"cover"}
+                />
+              </NotActive>
             </Box>
           </MotionFlex>
         </GridItem>
