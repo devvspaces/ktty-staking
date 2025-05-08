@@ -63,6 +63,7 @@ import {
   FiInfo,
   FiMoreVertical,
   FiExternalLink,
+  FiRefreshCw,
 } from "react-icons/fi";
 import { HiOutlineGift } from "react-icons/hi";
 import {
@@ -180,33 +181,33 @@ const StakingDashboard = () => {
   function formatNumberToHuman(num: number, digits = 1) {
     // Define the suffixes and their corresponding thresholds
     const suffixes = [
-      { value: 1e12, symbol: 'T' },  // Trillion
-      { value: 1e9, symbol: 'B' },   // Billion
-      { value: 1e6, symbol: 'M' },   // Million
-      { value: 1e3, symbol: 'K' }    // Thousand
+      { value: 1e12, symbol: "T" }, // Trillion
+      { value: 1e9, symbol: "B" }, // Billion
+      { value: 1e6, symbol: "M" }, // Million
+      { value: 1e3, symbol: "K" }, // Thousand
     ];
-    
+
     // Handle 0 or undefined separately
-    if (num === 0 || !num) return '0';
-    
+    if (num === 0 || !num) return "0";
+
     // Handle negative numbers
     const isNegative = num < 0;
     const absNum = Math.abs(num);
-    
+
     // Find the appropriate suffix
     for (const { value, symbol } of suffixes) {
       if (absNum >= value) {
         // Calculate the formatted value with proper rounding
         let formattedValue = (absNum / value).toFixed(digits);
-        
+
         // Remove trailing zeros after decimal point
-        formattedValue = formattedValue.replace(/\.0+$|(\.\d*[1-9])0+$/, '$1');
-        
+        formattedValue = formattedValue.replace(/\.0+$|(\.\d*[1-9])0+$/, "$1");
+
         // Return the formatted string with the negative sign if needed
-        return (isNegative ? '-' : '') + formattedValue + symbol;
+        return (isNegative ? "-" : "") + formattedValue + symbol;
       }
     }
-    
+
     // If number is smaller than 1000, just return it as is
     return num.toString();
   }
@@ -233,7 +234,9 @@ const StakingDashboard = () => {
                   .map((token: any) => token.symbol)
                   .join(" + ");
             }
-            let range = `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(max_stake)} $KTTY`;
+            let range = `${formatNumberToHuman(
+              min_stake
+            )} - ${formatNumberToHuman(max_stake)} $KTTY`;
             if (idx === data.tiers.length - 1) {
               range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
             }
@@ -571,9 +574,7 @@ const StakingDashboard = () => {
       // Approve amount
       console.log("selectedTier", selectedTier);
       console.log("stakeAmount", stakeAmount);
-      const amount = BigInt(
-        parseFloat(stakeAmount.replace(/,/g, "")) * 10 ** 18
-      );
+      const amount = BigInt(stakeAmount.replace(/,/g, "")) * BigInt(10 ** 18);
       const hash1 = await walletClient.writeContract({
         account: account,
         address: KTTY_TOKEN_ADDRESS,
@@ -908,9 +909,23 @@ const StakingDashboard = () => {
               borderColor={borderColor}
               variants={itemVariants}
             >
-              <Heading size="md" mb={4} color={textColor}>
-                Your Stats
-              </Heading>
+              <HStack justify="space-between" mb={4}>
+                <Heading size="md" color={textColor}>
+                  Your Stats
+                </Heading>
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  leftIcon={<FiRefreshCw />}
+                  isLoading={loadingUserStakes}
+                  isDisabled={!account}
+                  onClick={() => {
+                    fetchStakes(account!);
+                  }}
+                >
+                  Refresh
+                </Button>
+              </HStack>
               <VStack spacing={4} align="stretch">
                 <Stat bg={statBg} p={3} borderRadius="lg">
                   <StatLabel>Wallet Balance</StatLabel>

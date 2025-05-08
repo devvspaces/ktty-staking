@@ -89,7 +89,7 @@ export async function GET(request: Request) {
         rws.forEach((tokenRel: any) => {
           if (tokenRel.token) {
             const token = tokenRel.token;
-            const rewardAmount = (parseFloat(formatEther(stake.amount)) * ((parseFloat(stake.tiers.apy) / 100000) / 100))
+            const rewardAmount = (parseFloat(formatEther(BigInt(stake.amount))) * ((parseFloat(stake.tiers.apy) / 100000) / 100))
             rewards[token.symbol] = rewardAmount;
           }
         });
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       
       return {
         id: Number(stake.id),
-        amount: parseFloat(formatEther(stake.amount)),
+        amount: parseFloat(formatEther(BigInt(stake.amount))),
         lockupPeriod: stake.tiers ? Number(stake.tiers.lockup_period) / (24 * 60 * 60) : 0,
         startDate: moment(new Date(Number(stake.start_time) * 1000)).format("YYYY-MM-DD HH:mm:ss"),
         endDate:  moment(new Date(Number(stake.end_time) * 1000)).format("YYYY-MM-DD HH:mm:ss"),
