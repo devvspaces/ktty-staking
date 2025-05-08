@@ -89,7 +89,7 @@ export async function GET(request: Request) {
         rws.forEach((tokenRel: any) => {
           if (tokenRel.token) {
             const token = tokenRel.token;
-            const rewardAmount = (parseFloat(formatEther(stake.amount)) * ((parseFloat(stake.tiers.apy) / 100000) / 100)) + parseFloat(formatEther(stake.amount))
+            const rewardAmount = (parseFloat(formatEther(stake.amount)) * ((parseFloat(stake.tiers.apy) / 100000) / 100))
             rewards[token.symbol] = rewardAmount;
           }
         });
