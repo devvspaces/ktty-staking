@@ -43,8 +43,6 @@ import {
   Stat,
   StatLabel,
   StatNumber,
-  StatHelpText,
-  StatArrow,
   Tooltip,
   Menu,
   MenuButton,
@@ -137,6 +135,7 @@ import { saigon, ronin } from "viem/chains";
 import { abi } from "@/lib/abi.json";
 import { ERC20_ABI } from "@/lib/utils";
 import useCopy from "@/hook/useCopy";
+import moment from "moment";
 
 // Define types
 type TierType = {
@@ -153,6 +152,7 @@ type TierType = {
   active_stakes_count: number;
 };
 
+type StakeStatus = "active" | "ready-to-claim" | "claimed";
 type StakeType = {
   id: string;
   walletAddress: string;
@@ -161,14 +161,8 @@ type StakeType = {
   tierName: string;
   startDate: string;
   endDate: string;
-  rewards: {
-    ktty: number;
-    zee?: number;
-    kevAi?: number;
-    real?: number;
-    paw?: number;
-  };
-  status: "active" | "completed" | "withdrawn";
+  rewards: Record<string, number>;
+  status: StakeStatus;
 };
 
 type TokenBalanceType = {
@@ -233,7 +227,6 @@ const AdminDashboard: React.FC = () => {
       setLoadingTiers(true);
       const response = await fetch("/api/get-tiers");
       const data = await response.json();
-      console.log(data);
       const tiers: TierType[] = data.tiers.map((tier: any) => {
         const min_stake = formatEther(tier.min_stake);
         const max_stake = formatEther(tier.max_stake);
@@ -265,107 +258,93 @@ const AdminDashboard: React.FC = () => {
     }
   }, []);
 
+  useEffect(() => {
+    fetchTiers();
+  }, [fetchTiers]);
+
   // Mock stakes data
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [stakes, setStakes] = useState<StakeType[]>([
-    {
-      id: "stake-001",
-      walletAddress: "0x1234...5678",
-      amount: 1500000,
-      tier: 1,
-      tierName: "Tier 1",
-      startDate: "2025-03-15",
-      endDate: "2025-04-14",
-      rewards: {
-        ktty: 250,
-      },
-      status: "active",
+  const [stakes, setStakes] = useState<StakeType[]>([]);
+  const [fetchingStakes, setFetchingStakes] = useState(false);
+  const pageCount = useMemo(() => 15, []);
+  const [page, setPage] = useState(0);
+  const [stakesTotal, setStakesTotal] = useState(0)
+  const [hasNext, setHasNext] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [tierFilter, setTierFilter] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+
+  const fetchStakes = useCallback(
+    async (query: {
+      page: number;
+      page_count: number;
+      status: StakeStatus;
+      tierId: string | null;
+      search: string | null;
+    }) => {
+      const params = new URLSearchParams({
+        from: (query.page * query.page_count).toString(),
+        page_count: query.page_count.toString(),
+        status: query.status,
+        tierId: query.tierId || "",
+        search: query.search || "",
+      });
+      try {
+        setFetchingStakes(true);
+        const response = await fetch(
+          `/api/get-stakes-dashboard?${params.toString()}`
+        );
+        const data = await response.json();
+        console.log(data);
+
+        const stakes: StakeType[] = data.stakes.map((stake: any) => {
+          return {
+            id: stake.id,
+            walletAddress: `${stake.owner.substring(
+              0,
+              6
+            )}...${stake.owner.substring(stake.owner.length - 4)}`,
+            amount: parseFloat(stake.amount),
+            tier: stake.tier,
+            tierName: stake.tierName,
+            startDate: moment(stake.startDate).format("YYYY-MM-DD"),
+            endDate: moment(stake.endDate).format("YYYY-MM-DD"),
+            rewards: stake.rewards,
+            status: stake.status,
+          };
+        });
+        setStakes(stakes);
+        setStakesTotal(data.total)
+        if (data.stakes.length >= query.page_count) {
+          setHasNext(true);
+        } else {
+          setHasNext(false);
+        }
+      } catch (error) {
+        console.error("Error fetching stakes:", error);
+        toast({
+          title: "Error",
+          description: "Failed to fetch stakes",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+      } finally {
+        setFetchingStakes(false);
+      }
     },
-    {
-      id: "stake-002",
-      walletAddress: "0xabcd...efgh",
-      amount: 4000000,
-      tier: 2,
-      tierName: "Tier 2",
-      startDate: "2025-03-10",
-      endDate: "2025-05-09",
-      rewards: {
-        ktty: 2666,
-        zee: 1333,
-      },
-      status: "active",
-    },
-    {
-      id: "stake-003",
-      walletAddress: "0x7890...1234",
-      amount: 8000000,
-      tier: 3,
-      tierName: "Tier 3",
-      startDate: "2025-02-20",
-      endDate: "2025-05-21",
-      rewards: {
-        ktty: 13333,
-        zee: 6666,
-        kevAi: 2000,
-        real: 4000,
-        paw: 3000,
-      },
-      status: "active",
-    },
-    {
-      id: "stake-004",
-      walletAddress: "0x5678...9012",
-      amount: 12000000,
-      tier: 4,
-      tierName: "Diamond",
-      startDate: "2025-02-01",
-      endDate: "2025-05-02",
-      rewards: {
-        ktty: 30000,
-      },
-      status: "active",
-    },
-    {
-      id: "stake-005",
-      walletAddress: "0xefgh...ijkl",
-      amount: 25000000,
-      tier: 5,
-      tierName: "Platinum",
-      startDate: "2025-01-15",
-      endDate: "2025-07-14",
-      rewards: {
-        ktty: 104166,
-      },
-      status: "active",
-    },
-    {
-      id: "stake-006",
-      walletAddress: "0x2468...1357",
-      amount: 2000000,
-      tier: 1,
-      tierName: "Tier 1",
-      startDate: "2025-01-01",
-      endDate: "2025-01-31",
-      rewards: {
-        ktty: 333,
-      },
-      status: "completed",
-    },
-    {
-      id: "stake-007",
-      walletAddress: "0x1357...2468",
-      amount: 5000000,
-      tier: 2,
-      tierName: "Tier 2",
-      startDate: "2024-12-15",
-      endDate: "2025-02-13",
-      rewards: {
-        ktty: 3333,
-        zee: 1666,
-      },
-      status: "completed",
-    },
-  ]);
+    [toast]
+  );
+
+  useEffect(() => {
+    fetchStakes({
+      page: page,
+      page_count: pageCount,
+      status: statusFilter as StakeStatus,
+      tierId: tierFilter === "all" ? null : tierFilter,
+      search: "",
+    });
+  }, [fetchStakes, page, pageCount, statusFilter, tierFilter]);
+
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loadingDashboard, setLoadingDashboard] = useState(true);
 
@@ -611,11 +590,6 @@ const AdminDashboard: React.FC = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
-  // Filter states for analytics
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [tierFilter, setTierFilter] = useState<string>("all");
-  const [searchTerm, setSearchTerm] = useState<string>("");
-
   // Token addition state
   const [isAddTokenOpen, setIsAddTokenOpen] = useState<boolean>(false);
   const [newToken, setNewToken] = useState<{
@@ -631,8 +605,9 @@ const AdminDashboard: React.FC = () => {
     balance: 0,
     required: 0,
     color: "blue",
-    address: ""
+    address: "",
   });
+  const [addingToken, setAddingToken] = useState(false);
   const [tokenError, setTokenError] = useState<string>("");
 
   // Add new token functions
@@ -659,48 +634,61 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleAddToken = async () => {
-    if (validateNewToken()) {
-      const tokenToAdd = {
-        ...newToken,
-        symbol: newToken.symbol.trim().toUpperCase(),
-        name: `${newToken.name.trim()} Token`,
-        address: newToken.address.trim(),
-        color: tokenColors[tokenBalances.length % tokenColors.length],
-      };
-      
-      const hash1 = await walletClient.writeContract({
-        account: account,
-        address: STAKING_CONTRACT_ADDRESS,
-        abi,
-        functionName: "registerRewardToken",
-        args: [newToken.address.trim(), newToken.symbol.trim().toUpperCase(), BigInt(1)],
-      });
-      toast({
-        title: "Token is being added...",
-        description: `Transaction hash: ${hash1}`,
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-      });
-      await publicClient.waitForTransactionReceipt({ hash: hash1 });
-      toast({
-        title: `Successfully added token: ${newToken.symbol.trim().toUpperCase()}`,
-        description: "Token has been added successfully.",
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+    try {
+      setAddingToken(true);
+      if (validateNewToken()) {
+        const tokenToAdd = {
+          ...newToken,
+          symbol: newToken.symbol.trim().toUpperCase(),
+          name: `${newToken.name.trim()} Token`,
+          address: newToken.address.trim(),
+          color: tokenColors[tokenBalances.length % tokenColors.length],
+        };
 
-      setTokenBalances([...tokenBalances, tokenToAdd]);
-      setIsAddTokenOpen(false);
-      setNewToken({
-        symbol: "",
-        name: "",
-        balance: 0,
-        required: 0,
-        color: "blue",
-        address: "",
-      });
+        const hash1 = await walletClient.writeContract({
+          account: account,
+          address: STAKING_CONTRACT_ADDRESS,
+          abi,
+          functionName: "registerRewardToken",
+          args: [
+            newToken.address.trim(),
+            newToken.symbol.trim().toUpperCase(),
+            BigInt(1),
+          ],
+        });
+        toast({
+          title: "Token is being added...",
+          description: `Transaction hash: ${hash1}`,
+          status: "info",
+          duration: 3000,
+          isClosable: true,
+        });
+        await publicClient.waitForTransactionReceipt({ hash: hash1 });
+        toast({
+          title: `Successfully added token: ${newToken.symbol
+            .trim()
+            .toUpperCase()}`,
+          description: "Token has been added successfully.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+
+        setTokenBalances([...tokenBalances, tokenToAdd]);
+        setIsAddTokenOpen(false);
+        setNewToken({
+          symbol: "",
+          name: "",
+          balance: 0,
+          required: 0,
+          color: "blue",
+          address: "",
+        });
+      }
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setAddingToken(false);
     }
   };
 
@@ -715,39 +703,6 @@ const AdminDashboard: React.FC = () => {
     token: null,
   });
   const [tokenAmount, setTokenAmount] = useState<number>(0);
-
-  // Dashboard analytics
-  const totalStaked = stakes
-    .filter((stake) => stake.status === "active")
-    .reduce((sum, stake) => sum + stake.amount, 0);
-
-  const totalRewards = stakes.reduce(
-    (sum, stake) => sum + stake.rewards.ktty,
-    0
-  );
-
-  const activeStakes = stakes.filter(
-    (stake) => stake.status === "active"
-  ).length;
-  const completedStakes = stakes.filter(
-    (stake) => stake.status === "completed"
-  ).length;
-
-  // Get filtered stakes
-  const getFilteredStakes = () => {
-    return stakes.filter((stake) => {
-      const matchesStatus =
-        statusFilter === "all" || stake.status === statusFilter;
-      const matchesTier =
-        tierFilter === "all" || stake.tier === parseInt(tierFilter);
-      const matchesSearch =
-        searchTerm === "" ||
-        stake.walletAddress.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        stake.id.toLowerCase().includes(searchTerm.toLowerCase());
-
-      return matchesStatus && matchesTier && matchesSearch;
-    });
-  };
 
   // Format large numbers
   const formatNumber = (num: number): string => {
@@ -801,44 +756,49 @@ const AdminDashboard: React.FC = () => {
   // Execute token action
   const executeTokenAction = async () => {
     if (tokenActionDialog.token && tokenAmount > 0) {
-      const updatedBalances = await Promise.all(tokenBalances.map(async (token) => {
-        if (token.symbol === tokenActionDialog.token?.symbol) {
-          let newBalance = token.balance;
-          if (tokenActionDialog.type === "deposit") {
-            const hash1 = await walletClient.writeContract({
-              account: account,
-              address: token.address,
-              abi: ERC20_ABI,
-              functionName: "transfer",
-              args: [STAKING_CONTRACT_ADDRESS, parseEther(tokenAmount.toString())],
-            });
-            toast({
-              title: `Transfer in progress`,
-              description: `Transfer transaction submitted.`,
-              status: "info",
-              duration: 3000,
-              isClosable: true,
-            });
-            // Wait for transaction confirmation
-            await publicClient.waitForTransactionReceipt({ hash: hash1 });
-            toast({
-              title: "Transfer successful",
-              description: `You've deposited ${tokenAmount} ${token.symbol}`,
-              status: "success",
-              duration: 3000,
-              isClosable: true,
-            });
-            newBalance += tokenAmount;
-          } else {
-            // newBalance -= tokenAmount;
+      const updatedBalances = await Promise.all(
+        tokenBalances.map(async (token) => {
+          if (token.symbol === tokenActionDialog.token?.symbol) {
+            let newBalance = token.balance;
+            if (tokenActionDialog.type === "deposit") {
+              const hash1 = await walletClient.writeContract({
+                account: account,
+                address: token.address,
+                abi: ERC20_ABI,
+                functionName: "transfer",
+                args: [
+                  STAKING_CONTRACT_ADDRESS,
+                  parseEther(tokenAmount.toString()),
+                ],
+              });
+              toast({
+                title: `Transfer in progress`,
+                description: `Transfer transaction submitted.`,
+                status: "info",
+                duration: 3000,
+                isClosable: true,
+              });
+              // Wait for transaction confirmation
+              await publicClient.waitForTransactionReceipt({ hash: hash1 });
+              toast({
+                title: "Transfer successful",
+                description: `You've deposited ${tokenAmount} ${token.symbol}`,
+                status: "success",
+                duration: 3000,
+                isClosable: true,
+              });
+              newBalance += tokenAmount;
+            } else {
+              // newBalance -= tokenAmount;
+            }
+            return {
+              ...token,
+              balance: newBalance < 0 ? 0 : newBalance,
+            };
           }
-          return {
-            ...token,
-            balance: newBalance < 0 ? 0 : newBalance,
-          };
-        }
-        return token;
-      }));
+          return token;
+        })
+      );
 
       setTokenBalances(updatedBalances);
       setTokenActionDialog({ isOpen: false, type: "deposit", token: null });
@@ -1029,6 +989,15 @@ const AdminDashboard: React.FC = () => {
             onChange={(index) => {
               if (index === 1) {
                 fetchTiers();
+              }
+              if (index === 2 && stakes.length === 0) {
+                fetchStakes({
+                  page,
+                  page_count: pageCount,
+                  status: statusFilter as StakeStatus,
+                  tierId: tierFilter === "all" ? null : tierFilter,
+                  search: searchTerm,
+                });
               }
             }}
             variant="line"
@@ -1251,7 +1220,7 @@ const AdminDashboard: React.FC = () => {
                             Stakes Distribution by Tier
                           </Heading>
                         </CardHeader>
-                        <Box p={4}>
+                        <Box p={4} hidden={!loadingDashboard}>
                           <Spinner hidden={!loadingDashboard} />
                         </Box>
                         {dashboardData?.stakesDistribution && (
@@ -1606,8 +1575,8 @@ const AdminDashboard: React.FC = () => {
                       >
                         <option value="all">All Status</option>
                         <option value="active">Active</option>
-                        <option value="completed">Completed</option>
-                        <option value="withdrawn">Withdrawn</option>
+                        <option value="ready-to-claim">Ready to Claim</option>
+                        <option value="claimed">Claimed</option>
                       </Select>
                       <Select
                         width="150px"
@@ -1632,6 +1601,23 @@ const AdminDashboard: React.FC = () => {
                           <FiSearch color="gray.300" />
                         </InputRightElement>
                       </InputGroup>
+                      <Button
+                        leftIcon={<FiRefreshCw />}
+                        colorScheme="blue"
+                        size="sm"
+                        onClick={() => {
+                          fetchStakes({
+                            page,
+                            page_count: pageCount,
+                            status: statusFilter as StakeStatus,
+                            tierId: tierFilter === "all" ? null : tierFilter,
+                            search: searchTerm,
+                          });
+                        }}
+                        isLoading={fetchingStakes}
+                      >
+                        Sync Stakes
+                      </Button>
                     </HStack>
                   </Flex>
 
@@ -1647,12 +1633,9 @@ const AdminDashboard: React.FC = () => {
                         <CardBody>
                           <Stat>
                             <StatLabel>Active Stakes</StatLabel>
-                            <StatNumber>{activeStakes}</StatNumber>
-                            <StatHelpText>
-                              <StatArrow type="increase" />
-                              {Math.floor(Math.random() * 10 + 5)}% since last
-                              month
-                            </StatHelpText>
+                            <StatNumber>
+                              {dashboardData?.overview?.activeStakes ?? 0}
+                            </StatNumber>
                           </Stat>
                         </CardBody>
                       </Card>
@@ -1664,12 +1647,9 @@ const AdminDashboard: React.FC = () => {
                         <CardBody>
                           <Stat>
                             <StatLabel>Completed Stakes</StatLabel>
-                            <StatNumber>{completedStakes}</StatNumber>
-                            <StatHelpText>
-                              <StatArrow type="increase" />
-                              {Math.floor(Math.random() * 5 + 2)}% since last
-                              month
-                            </StatHelpText>
+                            <StatNumber>
+                              {dashboardData?.overview?.completedStakes ?? 0}
+                            </StatNumber>
                           </Stat>
                         </CardBody>
                       </Card>
@@ -1682,13 +1662,11 @@ const AdminDashboard: React.FC = () => {
                           <Stat>
                             <StatLabel>Total Value Locked</StatLabel>
                             <StatNumber>
-                              {formatNumber(totalStaked)} KTTY
+                              {formatNumber(
+                                dashboardData?.overview?.totalStaked ?? 0
+                              )}{" "}
+                              KTTY
                             </StatNumber>
-                            <StatHelpText>
-                              <StatArrow type="increase" />
-                              {Math.floor(Math.random() * 15 + 10)}% since last
-                              month
-                            </StatHelpText>
                           </Stat>
                         </CardBody>
                       </Card>
@@ -1701,13 +1679,11 @@ const AdminDashboard: React.FC = () => {
                           <Stat>
                             <StatLabel>Total Rewards Distributed</StatLabel>
                             <StatNumber>
-                              {formatNumber(totalRewards)} KTTY
+                              {formatNumber(
+                                dashboardData?.overview?.totalRewards?.ktty ?? 0
+                              )}{" "}
+                              KTTY
                             </StatNumber>
-                            <StatHelpText>
-                              <StatArrow type="increase" />
-                              {Math.floor(Math.random() * 8 + 6)}% since last
-                              month
-                            </StatHelpText>
                           </Stat>
                         </CardBody>
                       </Card>
@@ -1735,29 +1711,18 @@ const AdminDashboard: React.FC = () => {
                             <Th>End Date</Th>
                             <Th>Rewards</Th>
                             <Th>Status</Th>
-                            <Th>Actions</Th>
                           </Tr>
                         </Thead>
                         <Tbody>
-                          {getFilteredStakes().map((stake) => (
+                          {stakes.map((stake) => (
                             <Tr key={stake.id}>
                               <Td fontFamily="mono">{stake.id}</Td>
                               <Td fontFamily="mono">{stake.walletAddress}</Td>
-                              <Td isNumeric>
-                                {formatNumber(stake.amount)} KTTY
-                              </Td>
+                              <Td>{formatNumber(stake.amount)} KTTY</Td>
                               <Td>
                                 <Badge
                                   colorScheme={
-                                    stake.tier === 5
-                                      ? "purple"
-                                      : stake.tier === 4
-                                      ? "teal"
-                                      : stake.tier === 3
-                                      ? "orange"
-                                      : stake.tier === 2
-                                      ? "green"
-                                      : "blue"
+                                    tierColors[stake.tier % tierColors.length]
                                   }
                                 >
                                   {stake.tierName}
@@ -1775,29 +1740,12 @@ const AdminDashboard: React.FC = () => {
                                     View
                                   </MenuButton>
                                   <MenuList fontSize="sm">
-                                    <MenuItem>
-                                      KTTY: {formatNumber(stake.rewards.ktty)}
-                                    </MenuItem>
-                                    {stake.rewards.zee && (
-                                      <MenuItem>
-                                        ZEE: {formatNumber(stake.rewards.zee)}
-                                      </MenuItem>
-                                    )}
-                                    {stake.rewards.kevAi && (
-                                      <MenuItem>
-                                        KEV-AI:{" "}
-                                        {formatNumber(stake.rewards.kevAi)}
-                                      </MenuItem>
-                                    )}
-                                    {stake.rewards.real && (
-                                      <MenuItem>
-                                        REAL: {formatNumber(stake.rewards.real)}
-                                      </MenuItem>
-                                    )}
-                                    {stake.rewards.paw && (
-                                      <MenuItem>
-                                        PAW: {formatNumber(stake.rewards.paw)}
-                                      </MenuItem>
+                                    {Object.entries(stake.rewards).map(
+                                      ([token, amount]) => (
+                                        <MenuItem key={token}>
+                                          {token}: {formatNumber(amount)}
+                                        </MenuItem>
+                                      )
                                     )}
                                   </MenuList>
                                 </Menu>
@@ -1807,7 +1755,7 @@ const AdminDashboard: React.FC = () => {
                                   colorScheme={
                                     stake.status === "active"
                                       ? "green"
-                                      : stake.status === "completed"
+                                      : stake.status === "ready-to-claim"
                                       ? "blue"
                                       : "gray"
                                   }
@@ -1815,27 +1763,18 @@ const AdminDashboard: React.FC = () => {
                                   {stake.status}
                                 </Badge>
                               </Td>
-                              <Td>
-                                <HStack spacing={2}>
-                                  <IconButton
-                                    aria-label="View details"
-                                    icon={<FiSearch />}
-                                    size="xs"
-                                    variant="ghost"
-                                  />
-                                  <IconButton
-                                    aria-label="Export"
-                                    icon={<FiDownload />}
-                                    size="xs"
-                                    variant="ghost"
-                                  />
-                                </HStack>
-                              </Td>
                             </Tr>
                           ))}
                         </Tbody>
                       </Table>
                     </Box>
+
+                    {stakes.length === 0 && (
+                      <Box p={4} textAlign="center" color="gray.500">
+                        No stakes found for the selected filters.
+                      </Box>
+                    )}
+
                     <Flex
                       justify="space-between"
                       align="center"
@@ -1843,67 +1782,28 @@ const AdminDashboard: React.FC = () => {
                       borderTopWidth="1px"
                     >
                       <Text fontSize="sm">
-                        Showing {getFilteredStakes().length} of {stakes.length}{" "}
-                        stakes
+                        Page {page + 1} of {Math.ceil(stakesTotal/pageCount)} stakes
                       </Text>
                       <HStack>
                         <Button
                           size="sm"
                           leftIcon={<FiChevronLeft />}
-                          isDisabled
+                          isDisabled={page === 0}
+                          onClick={() => setPage(page - 1)}
                         >
                           Previous
                         </Button>
-                        <Button size="sm" rightIcon={<FiChevronRight />}>
+                        <Button
+                          onClick={() => setPage(page + 1)}
+                          isDisabled={!hasNext}
+                          size="sm"
+                          rightIcon={<FiChevronRight />}
+                        >
                           Next
                         </Button>
                       </HStack>
                     </Flex>
                   </Box>
-
-                  {/* Advanced Analytics */}
-                  <Grid
-                    templateColumns={{ base: "1fr", lg: "1fr 1fr" }}
-                    gap={6}
-                  >
-                    {/* Staking Activity Over Time */}
-                    <GridItem as={Card}>
-                      <CardHeader>
-                        <Heading size="md">Staking Activity Over Time</Heading>
-                      </CardHeader>
-                      <CardBody>
-                        <Box
-                          h="300px"
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="center"
-                        >
-                          <Text color="gray.500">
-                            Chart visualization would go here
-                          </Text>
-                        </Box>
-                      </CardBody>
-                    </GridItem>
-
-                    {/* Distribution by Tier Chart */}
-                    <GridItem as={Card}>
-                      <CardHeader>
-                        <Heading size="md">Distribution by Tier</Heading>
-                      </CardHeader>
-                      <CardBody>
-                        <Box
-                          h="300px"
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="center"
-                        >
-                          <Text color="gray.500">
-                            Pie chart visualization would go here
-                          </Text>
-                        </Box>
-                      </CardBody>
-                    </GridItem>
-                  </Grid>
                 </MotionBox>
               </TabPanel>
 
@@ -1928,6 +1828,7 @@ const AdminDashboard: React.FC = () => {
                         colorScheme="green"
                         size="sm"
                         onClick={() => setIsAddTokenOpen(true)}
+                        isLoading={addingToken}
                       >
                         Add New Token
                       </Button>
@@ -2497,10 +2398,7 @@ const AdminDashboard: React.FC = () => {
                 <FormControl mb={4}>
                   <FormLabel>Smart Contract Address</FormLabel>
                   <InputGroup>
-                    <Input
-                      value={STAKING_CONTRACT_ADDRESS}
-                      isReadOnly
-                    />
+                    <Input value={STAKING_CONTRACT_ADDRESS} isReadOnly />
                     <InputRightElement>
                       <IconButton
                         aria-label="Copy"
@@ -2516,10 +2414,7 @@ const AdminDashboard: React.FC = () => {
                 <FormControl mb={4}>
                   <FormLabel>Admin Wallet Address</FormLabel>
                   <InputGroup>
-                    <Input
-                      value=""
-                      isReadOnly
-                    />
+                    <Input value="" isReadOnly />
                     <InputRightElement>
                       <IconButton
                         aria-label="Copy"
