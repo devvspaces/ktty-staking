@@ -1486,7 +1486,7 @@ const StakingDashboard = () => {
                       parseFloat(stakeAmount.replace(/,/g, "")) <
                         stakingTiers[0].minStake ||
                       parseFloat(stakeAmount.replace(/,/g, "")) >
-                        parseFloat(userData.walletBalance.replace(/,/g, "")) ||
+                        userData.walletBalance ||
                       !isConnected
                     }
                     onClick={handleStake}
