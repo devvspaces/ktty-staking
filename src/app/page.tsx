@@ -54,14 +54,9 @@ import { motion } from "framer-motion";
 import {
   FiMoon,
   FiSun,
-  FiClock,
   FiLock,
   FiTrendingUp,
   FiAlertCircle,
-  FiAward,
-  FiRefreshCw,
-  FiUsers,
-  FiCopy,
   FiArrowRight,
   FiGift,
   FiCheck,
@@ -78,7 +73,6 @@ import {
   HiOutlineLightningBolt,
 } from "react-icons/hi";
 import { keyframes } from "@emotion/react";
-import NotActive from "@/components/NotActive";
 import {
   ConnectorError,
   ConnectorErrorType,
@@ -123,33 +117,6 @@ type StakingTier = {
     symbol: string;
   }[];
 };
-
-const bonusRewards = [
-  {
-    name: "Stacking Boost",
-    description:
-      "Restake your rewards and increase your APR by +0.01% each cycle (up to a max cap).",
-    icon: FiRefreshCw,
-  },
-  {
-    name: "180 Days Milestone",
-    description:
-      "Stake for 180 days (2 cycles of 90 days) and get an extra 2% $KTTY bonus.",
-    icon: FiClock,
-  },
-  {
-    name: "360 Days Milestone",
-    description:
-      "Stake for 360 days (4 cycles of 90 days) and get an extra 5% $KTTY bonus.",
-    icon: FiAward,
-  },
-  {
-    name: "Referral Rewards",
-    description:
-      "Invite friends to stake & earn a one-time 0.1% bonus in $KTTY based on their stake.",
-    icon: FiUsers,
-  },
-];
 
 const STAKING_CONTRACT_ADDRESS = process.env
   .NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS as string;
@@ -716,13 +683,6 @@ const StakingDashboard = () => {
     return (amount * selectedTier.apy) / 100 + amount;
   };
 
-  // Generate referral link
-  const referralLink = "https://ktty.finance/stake?ref=YOUR_WALLET";
-  // Copy referral link
-  const copyReferralLink = () => {
-    navigator.clipboard.writeText(referralLink);
-    // Could add a toast notification here
-  };
 
   // Lock-up period options based on selected amount
   const getLockupOptions = () => {
@@ -756,7 +716,6 @@ const StakingDashboard = () => {
   };
 
   const bgWG = useColorModeValue("white", "gray.600");
-  const bgWG7 = useColorModeValue("white", "gray.700");
   const clr2 = useColorModeValue("gray.100", "gray.700");
   const clr3 = useColorModeValue("gray.200", "gray.600");
   const activeBg = useColorModeValue("green.50", "green.900");
@@ -1012,62 +971,21 @@ const StakingDashboard = () => {
             </MotionBox>
 
             {/* Rewards Card */}
-            <Box display={{ base: "none", md: "block" }}>
-              <NotActive>
-                <MotionBox
-                  p={6}
-                  bg={cardBg}
-                  borderRadius="xl"
-                  boxShadow="lg"
-                  border="1px"
-                  borderColor={borderColor}
-                  variants={itemVariants}
-                >
-                  <Heading size="md" mb={4} color={textColor}>
-                    Referral Program
-                  </Heading>
-
-                  <VStack spacing={4} align="stretch">
-                    <HStack justify="space-between">
-                      <Text>Total Referrals</Text>
-                      <Text fontWeight="bold">{userData.referrals}</Text>
-                    </HStack>
-
-                    <HStack justify="space-between">
-                      <Text>Rewards Earned</Text>
-                      <Text fontWeight="bold">
-                        {formatNumber(userData.referralRewards)} KTTY
-                      </Text>
-                    </HStack>
-
-                    <InputGroup size="md">
-                      <Input
-                        value={referralLink}
-                        isReadOnly
-                        pr="4.5rem"
-                        bg={bgWG}
-                        isDisabled
-                      />
-                      <InputRightElement width="4.5rem">
-                        <Button
-                          h="1.75rem"
-                          size="sm"
-                          onClick={copyReferralLink}
-                          leftIcon={<FiCopy />}
-                          isDisabled
-                        >
-                          Copy
-                        </Button>
-                      </InputRightElement>
-                    </InputGroup>
-
-                    <Text fontSize="sm" color="gray.500">
-                      Earn 0.1% of friends&apos; stake in KTTY + bonus ZEE for
-                      3+ month stakes!
-                    </Text>
-                  </VStack>
-                </MotionBox>
-              </NotActive>
+            <Box
+              rounded={"xl"}
+              overflow={"hidden"}
+              position={"relative"}
+              boxShadow="lg"
+              border="1px"
+              borderColor={borderColor}
+            >
+              <Image
+                src={"/short.jpg"}
+                alt=""
+                w={"100%"}
+                h={"100%"}
+                objectFit={"cover"}
+              />
             </Box>
 
             {/* Your Stakes Card */}
@@ -1427,6 +1345,7 @@ const StakingDashboard = () => {
                     bg={bgWG}
                     borderColor={borderColor}
                     _focus={{ borderColor: accentColor }}
+                    isDisabled={true}
                   >
                     {getLockupOptions().map((days) => (
                       <option key={days} value={days}>
@@ -1636,54 +1555,21 @@ const StakingDashboard = () => {
             </MotionBox>
 
             {/* Bonus Info */}
-            <Box display={{ base: "none", md: "block" }}>
-              <NotActive>
-                <MotionBox
-                  p={6}
-                  bg={cardBg}
-                  borderRadius="xl"
-                  boxShadow="lg"
-                  border="1px"
-                  borderColor={borderColor}
-                  variants={itemVariants}
-                >
-                  <Heading size="md" mb={4} color={textColor}>
-                    Bonus Rewards
-                  </Heading>
-
-                  <Grid
-                    templateColumns={{ base: "1fr", md: "1fr 1fr" }}
-                    gap={4}
-                  >
-                    {bonusRewards.map((bonus, index) => (
-                      <Box
-                        key={index}
-                        p={4}
-                        bg={bgWG7}
-                        borderRadius="lg"
-                        border="1px"
-                        borderColor={borderColor}
-                        transition="all 0.2s"
-                        _hover={{
-                          transform: "translateY(-2px)",
-                          boxShadow: "md",
-                        }}
-                      >
-                        <HStack mb={2}>
-                          <Icon
-                            as={bonus.icon}
-                            color={accentColor}
-                            w={5}
-                            h={5}
-                          />
-                          <Text fontWeight="bold">{bonus.name}</Text>
-                        </HStack>
-                        <Text fontSize="sm">{bonus.description}</Text>
-                      </Box>
-                    ))}
-                  </Grid>
-                </MotionBox>
-              </NotActive>
+            <Box
+              rounded={"xl"}
+              overflow={"hidden"}
+              position={"relative"}
+              boxShadow="lg"
+              border="1px"
+              borderColor={borderColor}
+            >
+              <Image
+                src={"/long.jpg"}
+                alt=""
+                w={"100%"}
+                h={"100%"}
+                objectFit={"cover"}
+              />
             </Box>
           </MotionFlex>
         </GridItem>
@@ -1887,7 +1773,9 @@ const StakingDashboard = () => {
                         return (
                           <HStack key={key} justify="space-between">
                             <Text>{key}</Text>
-                            <Text fontWeight="bold">{value.toLocaleString()}</Text>
+                            <Text fontWeight="bold">
+                              {value.toLocaleString()}
+                            </Text>
                           </HStack>
                         );
                       }
@@ -1985,9 +1873,7 @@ const StakingDashboard = () => {
                               <Icon as={HiOutlineFire} color={`${color}.500`} />
                               <Text>{key}</Text>
                             </HStack>
-                            <Text fontWeight="bold">
-                              {formatNumber(value)}
-                            </Text>
+                            <Text fontWeight="bold">{formatNumber(value)}</Text>
                           </HStack>
                         );
                       }
