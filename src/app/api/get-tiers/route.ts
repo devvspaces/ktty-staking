@@ -12,7 +12,7 @@ export async function GET() {
     // Get active stakes counts and amounts by tier using aggregation
     const { data: tierStats, error: tierStatsError } = await supabase
       .from('stakes')
-      .select('tier_id, id.count(), amount.sum()')
+      .select('tier_id, amount')
       .eq('has_withdrawn', false);
       
     if (tierStatsError) {
@@ -23,9 +23,12 @@ export async function GET() {
     // Create a map of tier stats for easy lookup
     const tierStatsMap: Record<string, { count: number; sum: number }> = {};
     tierStats.forEach(stat => {
+      if (!tierStatsMap[stat.tier_id]) {
+        tierStatsMap[stat.tier_id] = { count: 0, sum: 0 };
+      }
       tierStatsMap[stat.tier_id] = {
-        count: stat.count,
-        sum: parseFloat(formatEther(BigInt(stat.sum)))
+        count: tierStatsMap[stat.tier_id].count + 1,
+        sum: tierStatsMap[stat.tier_id].sum + parseFloat(formatEther(BigInt(stat.amount)))
       };
     });
     
