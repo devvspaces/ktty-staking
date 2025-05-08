@@ -381,8 +381,36 @@ const StakingDashboard = () => {
   };
 
   // Function to confirm and process the claim
-  const confirmClaimRewards = () => {
+  const confirmClaimRewards = async () => {
     if (!selectedStake) return;
+
+    // Stake amount
+    const hash2 = await walletClient.writeContract({
+      account: account,
+      address: STAKING_CONTRACT_ADDRESS,
+      abi: abi,
+      functionName: "claimRewardsAndWithdraw",
+      args: [selectedStake.id],
+    });
+
+    toast({
+      title: "Claiming rewards",
+      description: "Your claim transaction is being processed.",
+      status: "info",
+      duration: 3000,
+      isClosable: true,
+    });
+
+    // Wait for transaction confirmation
+    await publicClient.waitForTransactionReceipt({ hash: hash2 });
+
+    toast({
+      title: "Claim successful",
+      description: `You've successfully claimed rewards for stake #${selectedStake.id}.`,
+      status: "success",
+      duration: 5000,
+      isClosable: true,
+    });
 
     // Update the stake status in the state
     const updatedStakes = userStakes.map((stake) => {
