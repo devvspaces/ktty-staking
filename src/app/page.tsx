@@ -89,7 +89,7 @@ import {
 import { saigon, ronin } from "viem/chains";
 import moment from "moment";
 import { abi } from "@/lib/abi.json";
-import { ERC20_ABI } from "@/lib/utils";
+import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
 import NotActive from "@/components/NotActive";
 
 // Framer Motion animations
@@ -177,40 +177,6 @@ const StakingDashboard = () => {
   const [activeStakesTab, setActiveStakesTab] = useState(0);
   const [stakingTiers, setStakingTiers] = useState<StakingTier[]>([]);
   const [loadingStakingTiers, setLoadingStakingTiers] = useState(false);
-
-  function formatNumberToHuman(num: number, digits = 1) {
-    // Define the suffixes and their corresponding thresholds
-    const suffixes = [
-      { value: 1e12, symbol: "T" }, // Trillion
-      { value: 1e9, symbol: "B" }, // Billion
-      { value: 1e6, symbol: "M" }, // Million
-      { value: 1e3, symbol: "K" }, // Thousand
-    ];
-
-    // Handle 0 or undefined separately
-    if (num === 0 || !num) return "0";
-
-    // Handle negative numbers
-    const isNegative = num < 0;
-    const absNum = Math.abs(num);
-
-    // Find the appropriate suffix
-    for (const { value, symbol } of suffixes) {
-      if (absNum >= value) {
-        // Calculate the formatted value with proper rounding
-        let formattedValue = (absNum / value).toFixed(digits);
-
-        // Remove trailing zeros after decimal point
-        formattedValue = formattedValue.replace(/\.0+$|(\.\d*[1-9])0+$/, "$1");
-
-        // Return the formatted string with the negative sign if needed
-        return (isNegative ? "-" : "") + formattedValue + symbol;
-      }
-    }
-
-    // If number is smaller than 1000, just return it as is
-    return num.toString();
-  }
 
   const fetchTiers = useCallback(async () => {
     try {

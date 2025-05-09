@@ -133,7 +133,7 @@ import {
 } from "viem";
 import { saigon, ronin } from "viem/chains";
 import { abi } from "@/lib/abi.json";
-import { ERC20_ABI } from "@/lib/utils";
+import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
 import useCopy from "@/hook/useCopy";
 import moment from "moment";
 
@@ -191,7 +191,7 @@ const STAKING_CONTRACT_ADDRESS = process.env
 const currentChain =
   (process.env.NEXT_PUBLIC_CHAIN as string) === "ronin" ? ronin : saigon;
 
-const AdminDashboard: React.FC = () => {
+const AdminDashboard = () => {
   // Chakra hooks
   const { colorMode, toggleColorMode } = useColorMode();
   const toast = useToast();
@@ -228,8 +228,8 @@ const AdminDashboard: React.FC = () => {
       const response = await fetch("/api/get-tiers");
       const data = await response.json();
       const tiers: TierType[] = data.tiers.map((tier: any) => {
-        const min_stake = formatEther(tier.min_stake);
-        const max_stake = formatEther(tier.max_stake);
+        const min_stake = tier.min_stake;
+        const max_stake = tier.max_stake;
         const lockupInDays = tier.lockup_period / (24 * 60 * 60);
         const apy = parseFloat((tier.apy / 100000).toFixed(1));
         const rewards = ["KTTY"];
@@ -239,12 +239,12 @@ const AdminDashboard: React.FC = () => {
         return {
           id: tier.id,
           name: tier.name,
-          range: `${min_stake} - ${max_stake} $KTTY`,
-          lockup: `${lockupInDays} days`,
+          range: `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(max_stake)} $KTTY`,
+          lockup: `${lockupInDays}`,
           apy: apy,
           rewards,
-          minStake: parseFloat(min_stake),
-          maxStake: parseFloat(max_stake),
+          minStake: min_stake,
+          maxStake: max_stake,
           isActive: true,
           active_stakes_amount: tier.active_stakes_amount,
           active_stakes_count: tier.active_stakes_count,
@@ -267,7 +267,7 @@ const AdminDashboard: React.FC = () => {
   const [fetchingStakes, setFetchingStakes] = useState(false);
   const pageCount = useMemo(() => 15, []);
   const [page, setPage] = useState(0);
-  const [stakesTotal, setStakesTotal] = useState(0)
+  const [stakesTotal, setStakesTotal] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -313,7 +313,7 @@ const AdminDashboard: React.FC = () => {
           };
         });
         setStakes(stakes);
-        setStakesTotal(data.total)
+        setStakesTotal(data.total);
         if (data.stakes.length >= query.page_count) {
           setHasNext(true);
         } else {
@@ -352,37 +352,38 @@ const AdminDashboard: React.FC = () => {
   const [publicClient, setPublicClient] = useState<any>(null);
   const [walletClient, setWalletClient] = useState<any>(null);
 
-  useEffect(() => {
-    async function fetchDashboard() {
-      try {
-        setLoadingDashboard(true);
-        const response = await fetch("/api/get-dashboard", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
+  const fetchDashboard = useCallback(async () => {
+    try {
+      setLoadingDashboard(true);
+      const response = await fetch("/api/get-dashboard", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: "Failed to fetch dashboard data",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
         });
-        if (!response.ok) {
-          toast({
-            title: "Error",
-            description: "Failed to fetch dashboard data",
-            status: "error",
-            duration: 3000,
-            isClosable: true,
-          });
-        }
-        const data = await response.json();
-        console.log(data);
-        setDashboardData(data);
-        setLoadingDashboard(false);
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setLoadingDashboard(false);
       }
+      const data = await response.json();
+      console.log(data);
+      setDashboardData(data);
+      setLoadingDashboard(false);
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoadingDashboard(false);
     }
+  }, []);
+
+  useEffect(() => {
     fetchDashboard();
-  }, [toast]);
+  }, [fetchDashboard]);
 
   // Token balances
   const tokenColors = useMemo(() => {
@@ -566,7 +567,7 @@ const AdminDashboard: React.FC = () => {
             symbol,
             name: `${symbol} Token`,
             balance:
-              parseInt(formatEther(balance)) - (data[symbol].stakes ?? 0),
+              parseFloat(formatEther(balance)) - (data[symbol].stakes ?? 0),
             required: data[symbol].amount ?? 0,
             color: tokenColors[idx % tokenColors.length],
             address: data[symbol].address,
@@ -579,7 +580,7 @@ const AdminDashboard: React.FC = () => {
     } finally {
       setFetchingTokenBalances(false);
     }
-  }, [toast, tokenColors, publicClient]);
+  }, [tokenColors, publicClient]);
 
   useEffect(() => {
     fetchTokenBalances();
@@ -716,14 +717,53 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Save tier changes
-  const saveTierChanges = () => {
+  const [savingTier, setSavingTier] = useState(false);
+  const saveTierChanges = async () => {
+    try {
+      setSavingTier(true);
     if (editingTier) {
+      const hash1 = await walletClient.writeContract({
+        account: account,
+        address: STAKING_CONTRACT_ADDRESS,
+        abi,
+        functionName: "updateTier",
+        args: [
+          editingTier.id,
+          editingTier.name,
+          parseEther(editingTier.minStake.toString()),
+          parseEther(editingTier.maxStake.toString()),
+          editingTier.lockup,
+          editingTier.apy * 100000,
+          editingTier.isActive,
+        ],
+      });
+      toast({
+        title: "Updating tier...",
+        status: "info",
+        duration: 3000,
+        isClosable: true,
+      });
+      // Wait for transaction confirmation
+      await publicClient.waitForTransactionReceipt({ hash: hash1 });
+      toast({
+        title: "Tier updated",
+        description: `You've successfully updated Tier #${editingTier.id}`,
+        status: "success",
+        duration: 3000,
+        isClosable: true,
+      });
+
       setTiers(
         tiers.map((tier) => (tier.id === editingTier.id ? editingTier : tier))
       );
       setIsEditDialogOpen(false);
       setEditingTier(null);
     }
+  } catch (err) {
+    console.error(err)
+  } finally {
+    setSavingTier(false);
+  }
   };
 
   // Toggle tier reward token
@@ -752,6 +792,12 @@ const AdminDashboard: React.FC = () => {
     });
     setTokenAmount(0);
   };
+
+  function shortAddress(address: string) {
+    return `${address.substring(0, 6)}...${address.substring(
+      address.length - 4
+    )}`;
+  }
 
   // Execute token action
   const executeTokenAction = async () => {
@@ -1047,9 +1093,27 @@ const AdminDashboard: React.FC = () => {
                   >
                     {/* Overview Stats */}
                     <GridItem colSpan={{ base: 1, xl: 4 }}>
-                      <Heading size="lg" mb={6}>
-                        Dashboard Overview
-                      </Heading>
+                      <Flex
+                        justify="space-between"
+                        align="center"
+                        mb={6}
+                        gap={3}
+                        wrap={"wrap"}
+                      >
+                        <Heading size="lg">
+                          Dashboard Overview
+                        </Heading>
+
+                        <Button
+                          leftIcon={<FiRefreshCw />}
+                          colorScheme="blue"
+                          size="sm"
+                          onClick={fetchDashboard}
+                          isLoading={loadingDashboard}
+                        >
+                          Sync with Blockchain
+                        </Button>
+                      </Flex>
                     </GridItem>
 
                     {/* Total Staked */}
@@ -1147,13 +1211,6 @@ const AdminDashboard: React.FC = () => {
                         <CardHeader>
                           <HStack justify="space-between">
                             <Heading size="md">Recent Stakes</Heading>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              rightIcon={<FiChevronDown />}
-                            >
-                              View All
-                            </Button>
                           </HStack>
                         </CardHeader>
                         <CardBody
@@ -1182,7 +1239,7 @@ const AdminDashboard: React.FC = () => {
                               {dashboardData?.recentStakes?.map(
                                 (stake: any, idx: number) => (
                                   <Tr key={idx}>
-                                    <Td>{stake.wallet}</Td>
+                                    <Td>{shortAddress(stake.wallet)}</Td>
                                     <Td>{formatNumber(stake.amount)} KTTY</Td>
                                     <Td>
                                       <Badge
@@ -1326,10 +1383,10 @@ const AdminDashboard: React.FC = () => {
                                 </Flex>
                                 <Flex justify="space-between" mb={1}>
                                   <Text fontSize="sm" color="gray.500">
-                                    Balance: {token.balance.toLocaleString()}
+                                    Balance: {formatNumber(token.balance)}
                                   </Text>
                                   <Text fontSize="sm" color="gray.500">
-                                    Required: {token.required.toLocaleString()}
+                                    Required: {formatNumber(token.required)}
                                   </Text>
                                 </Flex>
                                 <Progress
@@ -1374,19 +1431,6 @@ const AdminDashboard: React.FC = () => {
                               <Text>Last Block Sync</Text>
                               <Text>12 seconds ago</Text>
                             </HStack>
-                            <HStack justify="space-between">
-                              <Text>Smart Contract Balance</Text>
-                              <Tag colorScheme="blue">5.23 ETH</Tag>
-                            </HStack>
-                            <Button
-                              size="sm"
-                              colorScheme="blue"
-                              leftIcon={<FiSettings />}
-                              variant="outline"
-                              alignSelf="flex-start"
-                            >
-                              Advanced Settings
-                            </Button>
                           </VStack>
                         </CardBody>
                       </Card>
@@ -1411,13 +1455,6 @@ const AdminDashboard: React.FC = () => {
                   >
                     <Heading size="lg">Tier Management</Heading>
                     <HStack>
-                      <Button
-                        leftIcon={<FiDownload />}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Export
-                      </Button>
                       <Button
                         leftIcon={<FiRefreshCw />}
                         colorScheme="blue"
@@ -1459,18 +1496,6 @@ const AdminDashboard: React.FC = () => {
                               <Flex justify="space-between" align="center">
                                 <Heading size="md">{tier.name}</Heading>
                                 <HStack>
-                                  <Switch
-                                    isChecked={tier.isActive}
-                                    colorScheme="green"
-                                    onChange={() => {
-                                      const updatedTiers = tiers.map((t) =>
-                                        t.id === tier.id
-                                          ? { ...t, isActive: !t.isActive }
-                                          : t
-                                      );
-                                      setTiers(updatedTiers);
-                                    }}
-                                  />
                                   <IconButton
                                     aria-label="Edit tier"
                                     icon={<FiEdit2 />}
@@ -1490,7 +1515,7 @@ const AdminDashboard: React.FC = () => {
                                 <Flex justify="space-between">
                                   <Text fontWeight="medium">Min Stake</Text>
                                   <Text>
-                                    {formatNumber(tier.minStake)} KTTY
+                                    {formatNumberToHuman(tier.minStake)} KTTY
                                   </Text>
                                 </Flex>
                                 <Flex justify="space-between">
@@ -1534,9 +1559,9 @@ const AdminDashboard: React.FC = () => {
                                   <HStack justify="space-between">
                                     <Text fontSize="sm">Total Staked:</Text>
                                     <Text fontSize="sm">
-                                      {(
+                                      {formatNumber(
                                         tier.active_stakes_amount ?? 0
-                                      ).toLocaleString()}{" "}
+                                      )}{" "}
                                       KTTY
                                     </Text>
                                   </HStack>
@@ -1782,7 +1807,8 @@ const AdminDashboard: React.FC = () => {
                       borderTopWidth="1px"
                     >
                       <Text fontSize="sm">
-                        Page {page + 1} of {Math.ceil(stakesTotal/pageCount)} stakes
+                        Page {page + 1} of {Math.ceil(stakesTotal / pageCount)}{" "}
+                        stakes
                       </Text>
                       <HStack>
                         <Button
@@ -2083,22 +2109,31 @@ const AdminDashboard: React.FC = () => {
                   </FormControl>
 
                   <FormControl>
-                    <FormLabel>Range Description</FormLabel>
-                    <Input
-                      value={editingTier.range}
-                      onChange={(e) =>
-                        setEditingTier({
-                          ...editingTier,
-                          range: e.target.value,
-                        })
-                      }
-                    />
-                  </FormControl>
-
-                  <FormControl>
                     <FormLabel>Minimum Stake (KTTY)</FormLabel>
                     <NumberInput
                       value={editingTier.minStake}
+                      onChange={(valueString) => {
+                        const value = parseInt(valueString);
+                        setEditingTier({
+                          ...editingTier,
+                          minStake: isNaN(value) ? 0 : value,
+                        });
+                      }}
+                      min={0}
+                      step={100000}
+                    >
+                      <NumberInputField />
+                      <NumberInputStepper>
+                        <NumberIncrementStepper />
+                        <NumberDecrementStepper />
+                      </NumberInputStepper>
+                    </NumberInput>
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel>Maximum Stake (KTTY)</FormLabel>
+                    <NumberInput
+                      value={editingTier.maxStake}
                       onChange={(valueString) => {
                         const value = parseInt(valueString);
                         setEditingTier({
@@ -2143,12 +2178,12 @@ const AdminDashboard: React.FC = () => {
                   <FormControl>
                     <FormLabel>APY (%)</FormLabel>
                     <NumberInput
-                      value={editingTier.apy * 100}
+                      value={editingTier.apy}
                       onChange={(valueString) => {
                         const value = parseFloat(valueString);
                         setEditingTier({
                           ...editingTier,
-                          apy: isNaN(value) ? 0 : value / 100,
+                          apy: isNaN(value) ? 0 : value,
                         });
                       }}
                       min={0}
@@ -2233,7 +2268,7 @@ const AdminDashboard: React.FC = () => {
               >
                 Cancel
               </Button>
-              <Button colorScheme="blue" onClick={saveTierChanges} ml={3}>
+              <Button isLoading={savingTier} colorScheme="blue" onClick={saveTierChanges} ml={3}>
                 Save Changes
               </Button>
             </AlertDialogFooter>
@@ -2719,7 +2754,6 @@ const AdminDashboard: React.FC = () => {
             borderRadius="full"
           />
           <MenuList>
-            <MenuItem icon={<FiRefreshCw />}>Sync with Blockchain</MenuItem>
             <MenuItem onClick={onOpenReports} icon={<FiDownload />}>
               Generate Report
             </MenuItem>
