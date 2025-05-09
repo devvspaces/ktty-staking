@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@supabase/supabase-js";
 import moment from "moment";
-import { formatEther } from "viem";
 
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
@@ -82,7 +81,7 @@ export async function GET(request: Request) {
 
     const { data: stakes, error: stakesError } = await query
       .order("created_at", { ascending: true })
-      .range(from, (from + page_count) - 1);
+      .range(from, from + page_count - 1);
 
     if (stakesError) {
       console.error("Error fetching stakes:", stakesError);
@@ -136,8 +135,7 @@ export async function GET(request: Request) {
           if (tokenRel.token) {
             const token = tokenRel.token;
             const rewardAmount =
-              parseFloat(formatEther(stake.amount)) *
-              (parseFloat(stake.tiers.apy) / 100000 / 100);
+              stake.amount * (parseFloat(stake.tiers.apy) / 100000 / 100);
             rewards[token.symbol] = rewardAmount;
           }
         });
@@ -145,7 +143,7 @@ export async function GET(request: Request) {
 
       return {
         id: Number(stake.id),
-        amount: parseFloat(formatEther(stake.amount)),
+        amount: stake.amount,
         lockupPeriod: stake.tiers
           ? Number(stake.tiers.lockup_period) / (24 * 60 * 60)
           : 0,

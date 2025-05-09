@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@supabase/supabase-js";
-import { formatEther } from "viem";
 
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
@@ -80,13 +79,13 @@ export async function GET() {
         rws.forEach((tokenRel: any) => {
           if (tokenRel.token) {
             const token = tokenRel.token;
-            const rewardAmount = (parseFloat(formatEther(stake.amount)) * ((parseFloat(stake.tiers.apy) / 100000) / 100))
+            const rewardAmount = (stake.amount * ((parseFloat(stake.tiers.apy) / 100000) / 100))
             if (rewards[token.symbol] === undefined) {
               return;
             }
             rewards[token.symbol].amount += rewardAmount;
             if (token.symbol === "KTTY") {
-              rewards[token.symbol].stakes += parseFloat(formatEther(stake.amount));
+              rewards[token.symbol].stakes += stake.amount;
             }
           }
         });

@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@supabase/supabase-js";
-import { formatEther } from "viem";
 
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
@@ -11,7 +10,7 @@ export async function GET() {
     // Calculate totals and active stakes
     const { data: activeStakesCount, error: activeStakesCountError } = await supabase
       .from('stakes')
-      .select('amount.count(), amount.sum()')
+      .select('id.count(), amount.sum()')
       .eq('has_withdrawn', false)
       .eq('has_claimed_rewards', false);
     if (activeStakesCountError) {
@@ -19,7 +18,7 @@ export async function GET() {
       return Response.json({ error: "Failed to fetch activeStakesCount" }, { status: 500 });
     };
     const activeStakes = activeStakesCount[0].count;
-    const totalStaked = parseFloat(formatEther(BigInt(activeStakesCount[0].sum)));
+    const totalStaked = activeStakesCount[0].sum;
 
     const { data: completedStakesCount, error: completedStakesCountError } = await supabase
       .from('stakes')
@@ -109,7 +108,7 @@ export async function GET() {
       
       return {
         wallet: stake.owner,
-        amount: parseFloat(formatEther(BigInt(stake.amount))),
+        amount: stake.amount,
         tier: (stake as any).tiers?.name || `Tier ${stake.tier_id}`,
         tierRaw: stake.tier_id,
         startDate,
@@ -159,7 +158,7 @@ export async function GET() {
     tierGroup.forEach(stake => {
       const tierId = stake.tier_id;
       if (tierDistribution[tierId]) {
-        tierDistribution[tierId].amount = parseFloat(formatEther(BigInt(stake.sum)));
+        tierDistribution[tierId].amount = stake.sum;
       }
     });
     

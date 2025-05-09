@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Box,
   Container,
@@ -212,58 +212,59 @@ const StakingDashboard = () => {
     return num.toString();
   }
 
-  useEffect(() => {
-    async function fetchTiers() {
-      try {
-        setLoadingStakingTiers(true);
-        const response = await fetch("/api/get-tiers");
-        const data = await response.json();
-        const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
-        const tiers: StakingTier[] = data.tiers.map(
-          (tier: any, idx: number) => {
-            const min_stake = parseFloat(formatEther(BigInt(tier.min_stake)));
-            const max_stake = parseFloat(formatEther(BigInt(tier.max_stake)));
-            const lockupInDays = tier.lockup_period / (24 * 60 * 60);
-            const apy = parseFloat((tier.apy / 100000).toFixed(1));
-            let rewardText = "$KTTY";
-            if (tier.reward_tokens.length > 0) {
-              rewardText =
-                rewardText +
-                " + " +
-                tier.reward_tokens
-                  .map((token: any) => token.symbol)
-                  .join(" + ");
-            }
-            let range = `${formatNumberToHuman(
-              min_stake
-            )} - ${formatNumberToHuman(max_stake)} $KTTY`;
-            if (idx === data.tiers.length - 1) {
-              range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
-            }
-            return {
-              id: tier.id,
-              name: tier.name,
-              range,
-              lockup: `${lockupInDays} days`,
-              apy: apy,
-              rewards: `${apy}% fixed in ${rewardText}`,
-              color: colors[idx % colors.length],
-              badges: [`Tier ${tier.id}`],
-              reward_tokens: tier.reward_tokens,
-              minStake: min_stake,
-              maxStake: max_stake,
-            };
+  const fetchTiers = useCallback(async () => {
+    try {
+      setLoadingStakingTiers(true);
+      const response = await fetch("/api/get-tiers");
+      const data = await response.json();
+      const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
+      const tiers: StakingTier[] = data.tiers.map(
+        (tier: any, idx: number) => {
+          const min_stake = tier.min_stake;
+          const max_stake = tier.max_stake;
+          const lockupInDays = tier.lockup_period / (24 * 60 * 60);
+          const apy = parseFloat((tier.apy / 100000).toFixed(1));
+          let rewardText = "$KTTY";
+          if (tier.reward_tokens.length > 0) {
+            rewardText =
+              rewardText +
+              " + " +
+              tier.reward_tokens
+                .map((token: any) => token.symbol)
+                .join(" + ");
           }
-        );
-        // sort by id
-        tiers.sort((a, b) => a.id - b.id);
-        setStakingTiers(tiers);
-      } finally {
-        setLoadingStakingTiers(false);
-      }
+          let range = `${formatNumberToHuman(
+            min_stake
+          )} - ${formatNumberToHuman(max_stake)} $KTTY`;
+          if (idx === data.tiers.length - 1) {
+            range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
+          }
+          return {
+            id: tier.id,
+            name: tier.name,
+            range,
+            lockup: `${lockupInDays} days`,
+            apy: apy,
+            rewards: `${apy}% fixed in ${rewardText}`,
+            color: colors[idx % colors.length],
+            badges: [`Tier ${tier.id}`],
+            reward_tokens: tier.reward_tokens,
+            minStake: min_stake,
+            maxStake: max_stake,
+          };
+        }
+      );
+      // sort by id
+      tiers.sort((a, b) => a.id - b.id);
+      setStakingTiers(tiers);
+    } finally {
+      setLoadingStakingTiers(false);
     }
-    fetchTiers();
   }, []);
+
+  useEffect(() => {
+    fetchTiers();
+  }, [fetchTiers]);
 
   // New state for stake details modal
   const [selectedStake, setSelectedStake] = useState<Stake | null>(null);
@@ -870,7 +871,7 @@ const StakingDashboard = () => {
                       <HStack justify="space-between" mt={1}>
                         <Text fontSize="sm">KTTY Balance</Text>
                         <Text fontSize="sm" fontWeight="bold">
-                          {parseFloat(balances.ktty).toLocaleString()}
+                          {formatNumber(parseFloat(balances.ktty))}
                         </Text>
                       </HStack>
                     </Box>
@@ -958,7 +959,7 @@ const StakingDashboard = () => {
                 <Stat bg={statBg} p={3} borderRadius="lg">
                   <StatLabel>Wallet Balance</StatLabel>
                   <HStack>
-                    <StatNumber>{userData.walletBalance} KTTY</StatNumber>
+                    <StatNumber>{formatNumber(userData.walletBalance)} KTTY</StatNumber>
                     <Tooltip label="Available for staking">
                       <Icon as={FiAlertCircle} color="gray.500" />
                     </Tooltip>
@@ -1410,7 +1411,7 @@ const StakingDashboard = () => {
                       Min: 1,000,000 KTTY
                     </Text>
                     <Text fontSize="sm" color="gray.500">
-                      Balance: {userData.walletBalance} KTTY
+                      Balance: {formatNumber(userData.walletBalance)} KTTY
                     </Text>
                   </HStack>
                 </Box>
@@ -1456,7 +1457,7 @@ const StakingDashboard = () => {
                       <Text>Est. Rewards</Text>
                     </HStack>
                     <Text fontWeight="bold">
-                      {calculateExpectedRewards().toLocaleString()} each
+                      {formatNumber(calculateExpectedRewards())} each
                     </Text>
                   </HStack>
 
@@ -1510,9 +1511,22 @@ const StakingDashboard = () => {
               borderColor={borderColor}
               variants={itemVariants}
             >
-              <Heading size="md" mb={4} color={textColor}>
+              <HStack justify="space-between" mb={4}>
+              <Heading size="md" color={textColor}>
                 Staking Tiers
               </Heading>
+              <Button
+                  size="sm"
+                  colorScheme="blue"
+                  leftIcon={<FiRefreshCw />}
+                  isLoading={loadingStakingTiers}
+                  onClick={() => {
+                    fetchStakes(account!);
+                  }}
+                >
+                  Refresh
+                </Button>
+              </HStack>
 
               <Spinner hidden={!loadingStakingTiers} />
 
@@ -1716,7 +1730,7 @@ const StakingDashboard = () => {
                 </Text>
                 <Heading size="md">{selectedTier?.apy ?? 0}%</Heading>
                 <Text fontSize="sm" color="gray.500">
-                  Est. {calculateExpectedRewards().toLocaleString()} each in
+                  Est. {formatNumber(calculateExpectedRewards())} each in
                   rewards
                 </Text>
               </Box>
@@ -1857,7 +1871,7 @@ const StakingDashboard = () => {
                           <HStack key={key} justify="space-between">
                             <Text>{key}</Text>
                             <Text fontWeight="bold">
-                              {value.toLocaleString()}
+                              {formatNumber(value)}
                             </Text>
                           </HStack>
                         );
