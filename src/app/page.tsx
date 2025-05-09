@@ -770,6 +770,7 @@ const StakingDashboard = () => {
 
         <HStack>
           <Button
+            hidden={true}
             onClick={toggleColorMode}
             variant="ghost"
             rounded="full"
@@ -1487,7 +1488,7 @@ const StakingDashboard = () => {
                   leftIcon={<FiRefreshCw />}
                   isLoading={loadingStakingTiers}
                   onClick={() => {
-                    fetchStakes(account!);
+                    fetchTiers();
                   }}
                 >
                   Refresh

@@ -2,9 +2,9 @@
 
 import { ChakraProvider, extendTheme } from "@chakra-ui/react";
 
-const theme = extendTheme({
+export const theme = extendTheme({
   config: {
-    initialColorMode: 'light',
+    initialColorMode: 'dark',
     useSystemColorMode: false,
   },
   fonts: {

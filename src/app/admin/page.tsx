@@ -239,7 +239,9 @@ const AdminDashboard = () => {
         return {
           id: tier.id,
           name: tier.name,
-          range: `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(max_stake)} $KTTY`,
+          range: `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(
+            max_stake
+          )} $KTTY`,
           lockup: `${lockupInDays}`,
           apy: apy,
           rewards,
@@ -460,6 +462,8 @@ const AdminDashboard = () => {
 
         const account = accounts[0];
 
+        console.log("Connected account", account)
+
         setAccount(account);
 
         provider.handleAccountsChanged = (accounts: string[]) => {
@@ -641,7 +645,7 @@ const AdminDashboard = () => {
         const tokenToAdd = {
           ...newToken,
           symbol: newToken.symbol.trim().toUpperCase(),
-          name: `${newToken.name.trim()} Token`,
+          name: `${newToken.symbol.trim()} Token`,
           address: newToken.address.trim(),
           color: tokenColors[tokenBalances.length % tokenColors.length],
         };
@@ -719,56 +723,113 @@ const AdminDashboard = () => {
   // Save tier changes
   const [savingTier, setSavingTier] = useState(false);
   const saveTierChanges = async () => {
+    if (!walletClient) return;
     try {
       setSavingTier(true);
-    if (editingTier) {
-      const hash1 = await walletClient.writeContract({
-        account: account,
-        address: STAKING_CONTRACT_ADDRESS,
-        abi,
-        functionName: "updateTier",
-        args: [
-          editingTier.id,
-          editingTier.name,
-          parseEther(editingTier.minStake.toString()),
-          parseEther(editingTier.maxStake.toString()),
-          editingTier.lockup,
-          editingTier.apy * 100000,
-          editingTier.isActive,
-        ],
-      });
-      toast({
-        title: "Updating tier...",
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-      });
-      // Wait for transaction confirmation
-      await publicClient.waitForTransactionReceipt({ hash: hash1 });
-      toast({
-        title: "Tier updated",
-        description: `You've successfully updated Tier #${editingTier.id}`,
-        status: "success",
-        duration: 3000,
-        isClosable: true,
-      });
+      if (editingTier) {
+        const hash1 = await walletClient.writeContract({
+          account: account,
+          address: STAKING_CONTRACT_ADDRESS,
+          abi,
+          functionName: "updateTier",
+          args: [
+            editingTier.id,
+            editingTier.name,
+            parseEther(editingTier.minStake.toString()),
+            parseEther(editingTier.maxStake.toString()),
+            editingTier.lockup,
+            editingTier.apy * 100000,
+            editingTier.isActive,
+          ],
+        });
+        toast({
+          title: "Updating tier...",
+          status: "info",
+          duration: 3000,
+          isClosable: true,
+        });
+        // Wait for transaction confirmation
+        await publicClient.waitForTransactionReceipt({ hash: hash1 });
+        toast({
+          title: "Tier updated",
+          description: `You've successfully updated Tier #${editingTier.id}`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
 
-      setTiers(
-        tiers.map((tier) => (tier.id === editingTier.id ? editingTier : tier))
-      );
-      setIsEditDialogOpen(false);
-      setEditingTier(null);
+        setTiers(
+          tiers.map((tier) => (tier.id === editingTier.id ? editingTier : tier))
+        );
+        setIsEditDialogOpen(false);
+        setEditingTier(null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingTier(false);
     }
-  } catch (err) {
-    console.error(err)
-  } finally {
-    setSavingTier(false);
-  }
   };
 
   // Toggle tier reward token
-  const toggleTierReward = (tokenSymbol: string) => {
+  const toggleTierReward = async (tokenSymbol: string) => {
+    if (!walletClient) return;
+
+    
+    try {
+      setSavingTier(true);
+      if (editingTier) {
+        const hash1 = await walletClient.writeContract({
+          account: account,
+          address: STAKING_CONTRACT_ADDRESS,
+          abi,
+          functionName: "updateTier",
+          args: [
+            editingTier.id,
+            editingTier.name,
+            parseEther(editingTier.minStake.toString()),
+            parseEther(editingTier.maxStake.toString()),
+            editingTier.lockup,
+            editingTier.apy * 100000,
+            editingTier.isActive,
+          ],
+        });
+        toast({
+          title: "Updating tier...",
+          status: "info",
+          duration: 3000,
+          isClosable: true,
+        });
+        // Wait for transaction confirmation
+        await publicClient.waitForTransactionReceipt({ hash: hash1 });
+        toast({
+          title: "Tier updated",
+          description: `You've successfully updated Tier #${editingTier.id}`,
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+
+        setTiers(
+          tiers.map((tier) => (tier.id === editingTier.id ? editingTier : tier))
+        );
+        setIsEditDialogOpen(false);
+        setEditingTier(null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSavingTier(false);
+    }
+
     if (editingTier) {
+
+      if (editingTier.rewards.includes(tokenSymbol)) {
+        // Remove it
+      } else {
+        // Add it
+      }
+
       const updatedRewards = editingTier.rewards.includes(tokenSymbol)
         ? editingTier.rewards.filter((reward) => reward !== tokenSymbol)
         : [...editingTier.rewards, tokenSymbol];
@@ -1100,9 +1161,7 @@ const AdminDashboard = () => {
                         gap={3}
                         wrap={"wrap"}
                       >
-                        <Heading size="lg">
-                          Dashboard Overview
-                        </Heading>
+                        <Heading size="lg">Dashboard Overview</Heading>
 
                         <Button
                           leftIcon={<FiRefreshCw />}
@@ -1854,7 +1913,6 @@ const AdminDashboard = () => {
                         colorScheme="green"
                         size="sm"
                         onClick={() => setIsAddTokenOpen(true)}
-                        isLoading={addingToken}
                       >
                         Add New Token
                       </Button>
@@ -2207,23 +2265,11 @@ const AdminDashboard = () => {
                       spacing={3}
                       wrap="wrap"
                     >
-                      {["KTTY", "ZEE", "KEV-AI", "REAL", "PAW"].map((token) => (
+                      {tokenBalances.map(i => i.symbol).map((token, idx) => (
                         <Button
                           key={token}
                           size="sm"
-                          colorScheme={
-                            editingTier.rewards.includes(token)
-                              ? token === "KTTY"
-                                ? "blue"
-                                : token === "ZEE"
-                                ? "green"
-                                : token === "KEV-AI"
-                                ? "purple"
-                                : token === "REAL"
-                                ? "cyan"
-                                : "orange"
-                              : "gray"
-                          }
+                          colorScheme={tokenColors[idx % tokenColors.length]}
                           leftIcon={
                             editingTier.rewards.includes(token) ? (
                               <FiCheck />
@@ -2268,7 +2314,13 @@ const AdminDashboard = () => {
               >
                 Cancel
               </Button>
-              <Button isLoading={savingTier} colorScheme="blue" onClick={saveTierChanges} ml={3}>
+              <Button
+                isDisabled={!isConnected || !walletClient}
+                isLoading={savingTier}
+                colorScheme="blue"
+                onClick={saveTierChanges}
+                ml={3}
+              >
                 Save Changes
               </Button>
             </AlertDialogFooter>
@@ -2836,13 +2888,13 @@ const AdminDashboard = () => {
               <FormControl isRequired>
                 <FormLabel>Token Address</FormLabel>
                 <Input
-                  placeholder="e.g. Bitcoin"
-                  value={newToken.name}
+                  placeholder="e.g. 0x1234567890abcdef..."
+                  value={newToken.address}
                   onChange={(e) =>
-                    setNewToken({ ...newToken, name: e.target.value })
+                    setNewToken({ ...newToken, address: e.target.value })
                   }
                 />
-                <FormHelperText>Full name of the token</FormHelperText>
+                <FormHelperText>Token contract address</FormHelperText>
               </FormControl>
             </VStack>
           </ModalBody>
@@ -2855,7 +2907,12 @@ const AdminDashboard = () => {
             >
               Cancel
             </Button>
-            <Button colorScheme="green" onClick={handleAddToken}>
+            <Button
+              isLoading={addingToken}
+              colorScheme="green"
+              onClick={handleAddToken}
+              isDisabled={!isConnected || !walletClient}
+            >
               Add Token
             </Button>
           </ModalFooter>
