@@ -178,6 +178,7 @@ const StakingDashboard = () => {
   const [stakingTiers, setStakingTiers] = useState<StakingTier[]>([]);
   const [loadingStakingTiers, setLoadingStakingTiers] = useState(false);
 
+  
   const fetchTiers = useCallback(async () => {
     try {
       setLoadingStakingTiers(true);
