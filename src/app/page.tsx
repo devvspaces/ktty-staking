@@ -686,8 +686,9 @@ const StakingDashboard = () => {
           rewards = rewards.concat(
             tierData.reward_tokens.map((token) => token.symbol)
           );
-          setSelectedTier(stakingTiers[i]);
+          setSelectedTier(tierData);
           setActiveRewards(rewards);
+          setLockupPeriod(parseInt(tierData.lockup));
           return;
         }
       }
@@ -698,14 +699,16 @@ const StakingDashboard = () => {
       if (amount < minTier.minStake) {
         setSelectedTier(null);
         setActiveRewards([]);
+        setLockupPeriod(30);
       } else if (amount > maxTier.maxStake) {
         setSelectedTier(maxTier);
         setActiveRewards(
           rewards.concat(maxTier.reward_tokens.map((token) => token.symbol))
         );
+        setLockupPeriod(parseInt(maxTier.lockup));
       }
     }
-  }, [stakeAmount, lockupPeriod]);
+  }, [stakeAmount, lockupPeriod, stakingTiers]);
 
   // Format numbers
   const formatNumber = (num: number) => {
