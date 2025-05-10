@@ -824,6 +824,12 @@ const AdminDashboard = () => {
           ...editingTier,
           rewards: updatedRewards,
         });
+        setTiers(
+          tiers.map((tier) => (tier.id === editingTier.id ? {
+            ...tier,
+            rewards: updatedRewards,
+          } : tier))
+        );
       }
     } catch (err) {
       console.error(err);
