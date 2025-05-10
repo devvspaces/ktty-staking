@@ -462,7 +462,7 @@ const AdminDashboard = () => {
 
         const account = accounts[0];
 
-        console.log("Connected account", account)
+        console.log("Connected account", account);
 
         setAccount(account);
 
@@ -772,72 +772,63 @@ const AdminDashboard = () => {
   };
 
   // Toggle tier reward token
-  const toggleTierReward = async (tokenSymbol: string) => {
+  const toggleTierReward = async (token: TokenBalanceType) => {
     if (!walletClient) return;
 
-    
     try {
       setSavingTier(true);
       if (editingTier) {
-        const hash1 = await walletClient.writeContract({
-          account: account,
-          address: STAKING_CONTRACT_ADDRESS,
-          abi,
-          functionName: "updateTier",
-          args: [
-            editingTier.id,
-            editingTier.name,
-            parseEther(editingTier.minStake.toString()),
-            parseEther(editingTier.maxStake.toString()),
-            editingTier.lockup,
-            editingTier.apy * 100000,
-            editingTier.isActive,
-          ],
-        });
+        let hash1 = null;
+        if (editingTier.rewards.includes(token.symbol)) {
+          hash1 = await walletClient.writeContract({
+            account: account,
+            address: STAKING_CONTRACT_ADDRESS,
+            abi,
+            functionName: "removeRewardTokenFromTier",
+            args: [
+              editingTier.id,
+              token.address,
+            ],
+          });
+        } else {
+          hash1 = await walletClient.writeContract({
+            account: account,
+            address: STAKING_CONTRACT_ADDRESS,
+            abi,
+            functionName: "addRewardTokenToTier",
+            args: [
+              editingTier.id,
+              token.address,
+            ],
+          });
+        }
         toast({
-          title: "Updating tier...",
+          title: "Updating tier reward tokens...",
           status: "info",
           duration: 3000,
           isClosable: true,
         });
-        // Wait for transaction confirmation
         await publicClient.waitForTransactionReceipt({ hash: hash1 });
         toast({
-          title: "Tier updated",
-          description: `You've successfully updated Tier #${editingTier.id}`,
+          title: "Tier reward tokens updated",
+          description: `You've successfully updated Tier #${editingTier.id} reward tokens`,
           status: "success",
           duration: 3000,
           isClosable: true,
         });
 
-        setTiers(
-          tiers.map((tier) => (tier.id === editingTier.id ? editingTier : tier))
-        );
-        setIsEditDialogOpen(false);
-        setEditingTier(null);
+        const updatedRewards = editingTier.rewards.includes(token.symbol)
+          ? editingTier.rewards.filter((reward) => reward !== token.symbol)
+          : [...editingTier.rewards, token.symbol];
+        setEditingTier({
+          ...editingTier,
+          rewards: updatedRewards,
+        });
       }
     } catch (err) {
       console.error(err);
     } finally {
       setSavingTier(false);
-    }
-
-    if (editingTier) {
-
-      if (editingTier.rewards.includes(tokenSymbol)) {
-        // Remove it
-      } else {
-        // Add it
-      }
-
-      const updatedRewards = editingTier.rewards.includes(tokenSymbol)
-        ? editingTier.rewards.filter((reward) => reward !== tokenSymbol)
-        : [...editingTier.rewards, tokenSymbol];
-
-      setEditingTier({
-        ...editingTier,
-        rewards: updatedRewards,
-      });
     }
   };
 
@@ -1556,6 +1547,7 @@ const AdminDashboard = () => {
                                 <Heading size="md">{tier.name}</Heading>
                                 <HStack>
                                   <IconButton
+                                    isDisabled={!isConnected || !walletClient}
                                     aria-label="Edit tier"
                                     icon={<FiEdit2 />}
                                     variant="ghost"
@@ -2265,22 +2257,24 @@ const AdminDashboard = () => {
                       spacing={3}
                       wrap="wrap"
                     >
-                      {tokenBalances.map(i => i.symbol).map((token, idx) => (
-                        <Button
-                          key={token}
-                          size="sm"
-                          colorScheme={tokenColors[idx % tokenColors.length]}
-                          leftIcon={
-                            editingTier.rewards.includes(token) ? (
-                              <FiCheck />
-                            ) : undefined
-                          }
-                          onClick={() => toggleTierReward(token)}
-                          mb={2}
-                        >
-                          {token}
-                        </Button>
-                      ))}
+                      {tokenBalances
+                        .map((i, idx) => (
+                          <Button
+                            key={i.symbol}
+                            isDisabled={!isConnected || !walletClient || savingTier}
+                            size="sm"
+                            colorScheme={tokenColors[idx % tokenColors.length]}
+                            leftIcon={
+                              editingTier.rewards.includes(i.symbol) ? (
+                                <FiCheck />
+                              ) : undefined
+                            }
+                            onClick={() => toggleTierReward(i)}
+                            mb={2}
+                          >
+                            {i.symbol}
+                          </Button>
+                        ))}
                     </Stack>
                     <FormHelperText>
                       Select the tokens to include in this tier&apos;s rewards
