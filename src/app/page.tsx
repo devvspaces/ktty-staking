@@ -91,6 +91,7 @@ import moment from "moment";
 import { abi } from "@/lib/abi.json";
 import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
 import NotActive from "@/components/NotActive";
+import CountUp from "react-countup";
 
 // Framer Motion animations
 const MotionBox = motion.create(Box);
@@ -178,49 +179,44 @@ const StakingDashboard = () => {
   const [stakingTiers, setStakingTiers] = useState<StakingTier[]>([]);
   const [loadingStakingTiers, setLoadingStakingTiers] = useState(false);
 
-  
   const fetchTiers = useCallback(async () => {
     try {
       setLoadingStakingTiers(true);
       const response = await fetch("/api/get-tiers");
       const data = await response.json();
       const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
-      const tiers: StakingTier[] = data.tiers.map(
-        (tier: any, idx: number) => {
-          const min_stake = tier.min_stake;
-          const max_stake = tier.max_stake;
-          const lockupInDays = tier.lockup_period / (24 * 60 * 60);
-          const apy = parseFloat((tier.apy / 100000).toFixed(1));
-          let rewardText = "$KTTY";
-          if (tier.reward_tokens.length > 0) {
-            rewardText =
-              rewardText +
-              " + " +
-              tier.reward_tokens
-                .map((token: any) => token.symbol)
-                .join(" + ");
-          }
-          let range = `${formatNumberToHuman(
-            min_stake
-          )} - ${formatNumberToHuman(max_stake)} $KTTY`;
-          if (idx === data.tiers.length - 1) {
-            range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
-          }
-          return {
-            id: tier.id,
-            name: tier.name,
-            range,
-            lockup: `${lockupInDays} days`,
-            apy: apy,
-            rewards: `${apy}% fixed in ${rewardText}`,
-            color: colors[idx % colors.length],
-            badges: [`Tier ${tier.id}`],
-            reward_tokens: tier.reward_tokens,
-            minStake: min_stake,
-            maxStake: max_stake,
-          };
+      const tiers: StakingTier[] = data.tiers.map((tier: any, idx: number) => {
+        const min_stake = tier.min_stake;
+        const max_stake = tier.max_stake;
+        const lockupInDays = tier.lockup_period / (24 * 60 * 60);
+        const apy = parseFloat((tier.apy / 100000).toFixed(1));
+        let rewardText = "$KTTY";
+        if (tier.reward_tokens.length > 0) {
+          rewardText =
+            rewardText +
+            " + " +
+            tier.reward_tokens.map((token: any) => token.symbol).join(" + ");
         }
-      );
+        let range = `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(
+          max_stake
+        )} $KTTY`;
+        if (idx === data.tiers.length - 1) {
+          range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
+        }
+        return {
+          id: tier.id,
+          name: tier.name,
+          range,
+          lockup: `${lockupInDays} days`,
+          apy: apy,
+          rewards: `${apy}% fixed in ${rewardText}`,
+          color: colors[idx % colors.length],
+          badges: [`Tier ${tier.id}`],
+          reward_tokens: tier.reward_tokens,
+          minStake: min_stake,
+          maxStake: max_stake,
+        };
+      });
       // sort by id
       tiers.sort((a, b) => a.id - b.id);
       setStakingTiers(tiers);
@@ -710,6 +706,35 @@ const StakingDashboard = () => {
     }
   }, [stakeAmount, lockupPeriod, stakingTiers]);
 
+  const [tvlData, setTvlData] = useState({
+    total: 0,
+    lastUpdated: new Date(),
+  });
+  const [fetchingTvl, setFetchingTvl] = useState(false);
+
+  const fetchTVL = useCallback(async () => {
+    try {
+      setFetchingTvl(true);
+      const response = await fetch("/api/get-tvl");
+      const data = await response.json();
+      setTvlData({
+        total: data.tvl || 0,
+        lastUpdated: new Date(),
+      });
+    } catch (error) {
+      console.error("Error fetching TVL:", error);
+    } finally {
+      setFetchingTvl(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTVL();
+    // Set up a refresh interval if needed
+    const interval = setInterval(fetchTVL, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, [fetchTVL]);
+
   // Format numbers
   const formatNumber = (num: number) => {
     return num.toLocaleString();
@@ -911,6 +936,54 @@ const StakingDashboard = () => {
             >
               <HStack justify="space-between" mb={4}>
                 <Heading size="md" color={textColor}>
+                  Stats
+                </Heading>
+                <Button
+                  size="sm"
+                  colorScheme="blue"
+                  leftIcon={<FiRefreshCw />}
+                  isLoading={fetchingTvl}
+                  onClick={() => {
+                    fetchTVL();
+                  }}
+                >
+                  Refresh
+                </Button>
+              </HStack>
+              <VStack spacing={4} align="stretch">
+                <Stat bg={statBg} p={3} borderRadius="lg">
+                  <StatLabel>Platform TVL</StatLabel>
+                  <HStack>
+                    <StatNumber>
+                      <CountUp
+                        start={0}
+                        end={tvlData.total}
+                        duration={2.5}
+                        separator=","
+                        decimals={0}
+                      />{" "}
+                      KTTY
+                    </StatNumber>
+                    <Tooltip label="Total Value Locked across all stakers">
+                      <Icon as={FiAlertCircle} color="gray.500" />
+                    </Tooltip>
+                  </HStack>
+                </Stat>
+              </VStack>
+            </MotionBox>
+            
+            {/* Stats Card */}
+            <MotionBox
+              p={6}
+              bg={cardBg}
+              borderRadius="xl"
+              boxShadow="lg"
+              border="1px"
+              borderColor={borderColor}
+              variants={itemVariants}
+            >
+              <HStack justify="space-between" mb={4}>
+                <Heading size="md" color={textColor}>
                   Your Stats
                 </Heading>
                 <Button
@@ -930,7 +1003,9 @@ const StakingDashboard = () => {
                 <Stat bg={statBg} p={3} borderRadius="lg">
                   <StatLabel>Wallet Balance</StatLabel>
                   <HStack>
-                    <StatNumber>{formatNumber(userData.walletBalance)} KTTY</StatNumber>
+                    <StatNumber>
+                      {formatNumber(userData.walletBalance)} KTTY
+                    </StatNumber>
                     <Tooltip label="Available for staking">
                       <Icon as={FiAlertCircle} color="gray.500" />
                     </Tooltip>
@@ -1483,10 +1558,10 @@ const StakingDashboard = () => {
               variants={itemVariants}
             >
               <HStack justify="space-between" mb={4}>
-              <Heading size="md" color={textColor}>
-                Staking Tiers
-              </Heading>
-              <Button
+                <Heading size="md" color={textColor}>
+                  Staking Tiers
+                </Heading>
+                <Button
                   size="sm"
                   colorScheme="blue"
                   leftIcon={<FiRefreshCw />}
@@ -1841,9 +1916,7 @@ const StakingDashboard = () => {
                         return (
                           <HStack key={key} justify="space-between">
                             <Text>{key}</Text>
-                            <Text fontWeight="bold">
-                              {formatNumber(value)}
-                            </Text>
+                            <Text fontWeight="bold">{formatNumber(value)}</Text>
                           </HStack>
                         );
                       }
