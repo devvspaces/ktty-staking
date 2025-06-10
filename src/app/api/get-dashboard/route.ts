@@ -52,10 +52,10 @@ export async function GET() {
     let otherTokenRewards = 0;
     
     for (const reward of rewardsData) {
-      if (!rewardsByToken[reward.token_address]) {
-        rewardsByToken[reward.token_address] = 0;
+      if (!rewardsByToken[reward.token_address.toLowerCase()]) {
+        rewardsByToken[reward.token_address.toLowerCase()] = 0;
       }
-      rewardsByToken[reward.token_address] += parseFloat(reward.amount);
+      rewardsByToken[reward.token_address.toLowerCase()] += parseFloat(reward.amount);
     }
     
     // Assuming KTTY token address is known
