@@ -50,6 +50,7 @@ export async function GET() {
     // Combine tier data with active stakes statistics
     return Response.json({
       tiers: tiers.map(tier => {
+        console.log(tier)
         const tierStat = tierStatsMap[tier.id] || { count: 0, sum: 0 };
         
         return {

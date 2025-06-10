@@ -536,6 +536,16 @@ const StakingDashboard = () => {
     }
   };
 
+  // Fetch account balance every 5 seconds
+  useEffect(() => {
+    if (account && publicClient) {
+      const interval = setInterval(() => {
+        fetchBalances(publicClient, account)
+      }, 5000)
+      return () => clearInterval(interval);
+    }
+  }, [account, publicClient]);
+
   const [stakeLoading, setStakeLoading] = useState(false);
   const handleConfirmStake = async () => {
     try {
@@ -653,7 +663,6 @@ const StakingDashboard = () => {
     });
   };
 
-  // Mock user data
   const userData = {
     walletBalance: parseFloat(balances.ktty),
     rewards: {

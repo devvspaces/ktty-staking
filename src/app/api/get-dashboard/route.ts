@@ -59,7 +59,7 @@ export async function GET() {
     }
     
     // Assuming KTTY token address is known
-    const kttyTokenAddress = process.env.NEXT_PUBLIC_KTTY_TOKEN_ADDRESS!;
+    const kttyTokenAddress = (process.env.NEXT_PUBLIC_KTTY_TOKEN_ADDRESS!).toLowerCase();
     totalKttyRewards = rewardsByToken[kttyTokenAddress] || 0;
     
     // Sum other token rewards
