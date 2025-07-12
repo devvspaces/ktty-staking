@@ -1713,7 +1713,7 @@ const StakingDashboard = () => {
               border="1px"
               borderColor={borderColor}
             >
-              <NotActive>
+              <a href="https://missions.kttyworld.io/" target="_blank">
                 <Image
                   src={"/long.jpg"}
                   alt=""
@@ -1721,7 +1721,7 @@ const StakingDashboard = () => {
                   h={"100%"}
                   objectFit={"cover"}
                 />
-              </NotActive>
+              </a>
             </Box>
           </MotionFlex>
         </GridItem>
