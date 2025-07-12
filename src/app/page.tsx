@@ -90,7 +90,6 @@ import { saigon, ronin } from "viem/chains";
 import moment from "moment";
 import { abi } from "@/lib/abi.json";
 import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
-import NotActive from "@/components/NotActive";
 import CountUp from "react-countup";
 
 // Framer Motion animations
