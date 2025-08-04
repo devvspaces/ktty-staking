@@ -52,6 +52,8 @@ export async function GET() {
       return Response.json({ error: "Failed to fetch tiers" }, { status: 500 });
     }
 
+    console.log('Fetched Tiers:', tiers);
+
     // Setup contract provider for sliding APY data
     const provider = new ethers.JsonRpcProvider(RPC_URL);
     const contract = new ethers.Contract(STAKING_CONTRACT_ADDRESS, ABI, provider);
@@ -68,7 +70,9 @@ export async function GET() {
         let maxApy = undefined;
         
         try {
+          console.log(`Fetching sliding APY for tier ${tier.id}`);
           isSliding = await contract.tierIsSliding(tier.id);
+          console.log(`Tier ${tier.id} isSliding:`, isSliding);
           if (isSliding) {
             minApy = await contract.tierMinApy(tier.id);
             maxApy = await contract.tierMaxApy(tier.id);
