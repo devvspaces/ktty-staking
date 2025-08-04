@@ -114,6 +114,9 @@ type StakingTier = {
   apy: number;
   minStake: number;
   maxStake: number;
+  isSliding?: boolean;
+  minApy?: number;
+  maxApy?: number;
   reward_tokens: {
     address: string;
     symbol: string;
@@ -202,18 +205,35 @@ const StakingDashboard = () => {
         if (idx === data.tiers.length - 1) {
           range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
         }
+        // Generate rewards text based on tier type
+        let rewardsDescription: string;
+        let badges = [`Tier ${tier.id}`];
+        
+        if (tier.isSliding && tier.minApy && tier.maxApy) {
+          const minApyPercent = (tier.minApy / 100000).toFixed(2);
+          const maxApyPercent = (tier.maxApy / 100000).toFixed(2);
+          rewardsDescription = `${minApyPercent}% - ${maxApyPercent}% dynamic in ${rewardText}`;
+          badges.push("📈 Dynamic APY");
+        } else {
+          rewardsDescription = `${apy}% fixed in ${rewardText}`;
+          badges.push("🔒 Fixed APY");
+        }
+
         return {
           id: tier.id,
           name: tier.name,
           range,
           lockup: `${lockupInDays} days`,
           apy: apy,
-          rewards: `${apy}% fixed in ${rewardText}`,
+          rewards: rewardsDescription,
           color: colors[idx % colors.length],
-          badges: [`Tier ${tier.id}`],
+          badges,
           reward_tokens: tier.reward_tokens,
           minStake: min_stake,
           maxStake: max_stake,
+          isSliding: tier.isSliding,
+          minApy: tier.minApy,
+          maxApy: tier.maxApy,
         };
       });
       // sort by id
@@ -748,11 +768,58 @@ const StakingDashboard = () => {
     return num.toLocaleString();
   };
 
+  // Calculate sliding APY for a given stake amount within a tier
+  const calculateSlidingApy = (amount: number, tier: StakingTier): number => {
+    if (!tier.isSliding || !tier.minApy || !tier.maxApy) {
+      return tier.apy;
+    }
+    
+    // Convert APY from contract scaling (1e5) to percentage
+    const minApyPercent = tier.minApy / 100000;
+    const maxApyPercent = tier.maxApy / 100000;
+    const minStake = tier.minStake;
+    const maxStake = tier.maxStake;
+    
+    // If stake is at minimum, return minimum APY
+    if (amount <= minStake) {
+      return minApyPercent;
+    }
+    
+    // If stake is at maximum, return maximum APY
+    if (amount >= maxStake) {
+      return maxApyPercent;
+    }
+    
+    // Linear interpolation
+    const stakeRange = maxStake - minStake;
+    const apyRange = maxApyPercent - minApyPercent;
+    const stakePosition = amount - minStake;
+    
+    return minApyPercent + (stakePosition * apyRange) / stakeRange;
+  };
+
+  // Get current effective APY for display
+  const getCurrentApy = (): number => {
+    if (!selectedTier) return 0;
+    if (!stakeAmount || !selectedTier.isSliding) {
+      return selectedTier.apy;
+    }
+    
+    const amount = parseFloat(stakeAmount.replace(/,/g, ""));
+    return calculateSlidingApy(amount, selectedTier);
+  };
+
   // Calculate expected rewards
   const calculateExpectedRewards = () => {
     if (!stakeAmount || !selectedTier) return 0;
     const amount = parseFloat(stakeAmount.replace(/,/g, ""));
-    return (amount * selectedTier.apy) / 100;
+    
+    // Use sliding APY if applicable, otherwise use fixed APY
+    const effectiveApy = selectedTier.isSliding
+      ? calculateSlidingApy(amount, selectedTier)
+      : selectedTier.apy;
+    
+    return (amount * effectiveApy) / 100;
   };
 
   // Lock-up period options based on selected amount
@@ -1460,9 +1527,24 @@ const StakingDashboard = () => {
                       </Button>
                     </InputRightElement>
                   </InputGroup>
+                  
+                  {/* Dynamic APY Indicator for Sliding Tiers */}
+                  {selectedTier?.isSliding && stakeAmount && (
+                    <Box mt={2} p={2} bg={cardBg} borderRadius="md" border="1px solid" borderColor={borderColor}>
+                      <HStack justify="space-between">
+                        <HStack>
+                          <Icon as={FiTrendingUp} color={accentColor} size="sm" />
+                          <Text fontSize="sm" fontWeight="medium">Your APY</Text>
+                        </HStack>
+                        <Text fontSize="sm" fontWeight="bold" color={accentColor}>
+                          {getCurrentApy().toFixed(3)}%
+                        </Text>
+                      </HStack>
+                    </Box>
+                  )}
                   <HStack mt={2} justify="space-between">
                     <Text fontSize="sm" color="gray.500">
-                      Min: 1,000,000 KTTY
+                      Min: {selectedTier ? formatNumber(selectedTier.minStake) : 0} KTTY
                     </Text>
                     <Text fontSize="sm" color="gray.500">
                       Balance: {formatNumber(userData.walletBalance)} KTTY
@@ -1502,7 +1584,7 @@ const StakingDashboard = () => {
                       <Icon as={FiTrendingUp} color={accentColor} />
                       <Text>APR</Text>
                     </HStack>
-                    <Text fontWeight="bold">{selectedTier?.apy ?? 0}%</Text>
+                    <Text fontWeight="bold">{getCurrentApy().toFixed(2)}%</Text>
                   </HStack>
 
                   <HStack justify="space-between" mb={2}>
@@ -1782,7 +1864,7 @@ const StakingDashboard = () => {
                 <Text fontSize="sm" color="gray.500">
                   Expected APR
                 </Text>
-                <Heading size="md">{selectedTier?.apy ?? 0}%</Heading>
+                <Heading size="md">{getCurrentApy().toFixed(2)}%</Heading>
                 <Text fontSize="sm" color="gray.500">
                   Est. {formatNumber(calculateExpectedRewards())} each in
                   rewards

@@ -1,10 +1,15 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createClient } from "@supabase/supabase-js";
+import { ethers } from "ethers";
+import ABI from "@/lib/abi.json";
 
 const supabase = createClient(
   process.env.SUPABASE_URL as string,
   process.env.SUPABASE_KEY as string
 );
+
+const RPC_URL = process.env.RPC_URL as string;
+const STAKING_CONTRACT_ADDRESS = process.env.STAKING_CONTRACT_ADDRESS as string;
 
 export async function GET() {
   try {
@@ -47,11 +52,31 @@ export async function GET() {
       return Response.json({ error: "Failed to fetch tiers" }, { status: 500 });
     }
 
-    // Combine tier data with active stakes statistics
-    return Response.json({
-      tiers: tiers.map(tier => {
+    // Setup contract provider for sliding APY data
+    const provider = new ethers.JsonRpcProvider(RPC_URL);
+    const contract = new ethers.Contract(STAKING_CONTRACT_ADDRESS, ABI.abi, provider);
+
+    // Combine tier data with active stakes statistics and sliding APY data
+    const enhancedTiers = await Promise.all(
+      tiers.map(async (tier) => {
         console.log(tier)
         const tierStat = tierStatsMap[tier.id] || { count: 0, sum: 0 };
+        
+        // Fetch sliding APY data from contract
+        let isSliding = false;
+        let minApy = undefined;
+        let maxApy = undefined;
+        
+        try {
+          isSliding = await contract.tierIsSliding(tier.id);
+          if (isSliding) {
+            minApy = await contract.tierMinApy(tier.id);
+            maxApy = await contract.tierMaxApy(tier.id);
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch sliding APY data for tier ${tier.id}:`, error);
+          // Default to non-sliding if contract calls fail
+        }
         
         return {
           ...tier,
@@ -59,11 +84,18 @@ export async function GET() {
           max_stake: tier.max_stake,
           active_stakes_count: tierStat.count,
           active_stakes_amount: tierStat.sum,
+          isSliding,
+          minApy: minApy ? Number(minApy) : undefined,
+          maxApy: maxApy ? Number(maxApy) : undefined,
           reward_tokens: tier.reward_tokens
             .map((relation: { token: any; }) => relation.token)
             .filter((token: any) => token) // Filter out any nulls
         };
       })
+    );
+
+    return Response.json({
+      tiers: enhancedTiers
     });
   } catch (error) {
     console.error('Tiers API Error:', error);
