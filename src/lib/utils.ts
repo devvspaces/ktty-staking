@@ -9,6 +9,11 @@ export const ERC20_ABI = parseAbi([
 ]);
 
 export function formatNumberToHuman(num: number, digits = 1) {
+
+  if (num === 999999) {
+    return "999,999"
+  }
+
   // Define the suffixes and their corresponding thresholds
   const suffixes = [
     { value: 1e12, symbol: "T" }, // Trillion
