@@ -1694,7 +1694,16 @@ const StakingDashboard = () => {
                     },
                   }}
                 >
-                  {stakingTiers.map((tier) => (
+                  {stakingTiers.filter((tier) => tier.id == 6).map((tier) => (
+                    <Tab
+                      key={tier.id}
+                      _selected={{ color: "white", bg: tier.color }}
+                      whiteSpace={"nowrap"}
+                    >
+                      {tier.name}
+                    </Tab>
+                  ))}
+                  {stakingTiers.filter((tier) => tier.id != 6).map((tier) => (
                     <Tab
                       key={tier.id}
                       _selected={{ color: "white", bg: tier.color }}
@@ -1706,7 +1715,87 @@ const StakingDashboard = () => {
                 </TabList>
 
                 <TabPanels>
-                  {stakingTiers.map((tier) => (
+                  {stakingTiers.filter((tier) => tier.id == 6).map((tier) => (
+                    <TabPanel key={tier.id} p={0}>
+                      <Box
+                        p={4}
+                        bg={
+                          colorMode === "light"
+                            ? `${tier.color}10`
+                            : `${tier.color}30`
+                        }
+                        borderRadius="lg"
+                        border="1px"
+                        borderColor={
+                          colorMode === "light"
+                            ? `${tier.color}30`
+                            : `${tier.color}50`
+                        }
+                      >
+                        <HStack mb={3} spacing={2}>
+                          {tier.badges.map((badge, index) => (
+                            <Badge
+                              key={index}
+                              colorScheme={tier.color.replace("#", "")}
+                              variant="solid"
+                            >
+                              {badge}
+                            </Badge>
+                          ))}
+                        </HStack>
+
+                        <Grid
+                          templateColumns={{ base: "1fr", sm: "1fr 1fr" }}
+                          gap={4}
+                          mb={3}
+                        >
+                          <Box>
+                            <Text fontSize="sm" color="gray.500">
+                              Requirement
+                            </Text>
+                            <HStack>
+                              <Icon as={HiOutlineChartBar} color={tier.color} />
+                              <Text fontWeight="medium">{tier.range}</Text>
+                            </HStack>
+                          </Box>
+
+                          <Box>
+                            <Text fontSize="sm" color="gray.500">
+                              Lock-up Period
+                            </Text>
+                            <HStack>
+                              <Icon as={HiOutlineClock} color={tier.color} />
+                              <Text fontWeight="medium">{tier.lockup}</Text>
+                            </HStack>
+                          </Box>
+                        </Grid>
+
+                        <Box mb={4}>
+                          <Text fontSize="sm" color="gray.500">
+                            Rewards
+                          </Text>
+                          <HStack>
+                            <Icon as={HiOutlineFire} color={tier.color} />
+                            <Text fontWeight="medium">{tier.rewards}</Text>
+                          </HStack>
+                        </Box>
+
+                        <Button
+                          colorScheme={tier.color.replace("#", "")}
+                          variant="outline"
+                          rightIcon={<FiArrowRight />}
+                          onClick={() => {
+                            // Set the minimum stake amount for this tier
+                            setStakeAmount(tier.minStake.toString());
+                            setLockupPeriod(parseInt(tier.lockup));
+                          }}
+                        >
+                          Stake at this tier
+                        </Button>
+                      </Box>
+                    </TabPanel>
+                  ))}
+                  {stakingTiers.filter((tier) => tier.id != 6).map((tier) => (
                     <TabPanel key={tier.id} p={0}>
                       <Box
                         p={4}
