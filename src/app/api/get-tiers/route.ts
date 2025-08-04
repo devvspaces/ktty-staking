@@ -52,7 +52,7 @@ export async function GET() {
       return Response.json({ error: "Failed to fetch tiers" }, { status: 500 });
     }
 
-    console.log('Fetched Tiers:', tiers);
+    console.log('Fetched Tiers =>', tiers);
 
     // Setup contract provider for sliding APY data
     const provider = new ethers.JsonRpcProvider(RPC_URL);
