@@ -9,7 +9,7 @@ const supabase = createClient(
 );
 
 const RPC_URL = process.env.RPC_URL as string;
-const STAKING_CONTRACT_ADDRESS = process.env.STAKING_CONTRACT_ADDRESS as string;
+const STAKING_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STAKING_CONTRACT_ADDRESS as string;
 
 export async function GET() {
   try {
@@ -54,7 +54,7 @@ export async function GET() {
 
     // Setup contract provider for sliding APY data
     const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const contract = new ethers.Contract(STAKING_CONTRACT_ADDRESS, ABI.abi, provider);
+    const contract = new ethers.Contract(STAKING_CONTRACT_ADDRESS, ABI, provider);
 
     // Combine tier data with active stakes statistics and sliding APY data
     const enhancedTiers = await Promise.all(

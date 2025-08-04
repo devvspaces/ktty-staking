@@ -88,7 +88,7 @@ import {
 } from "viem";
 import { saigon, ronin } from "viem/chains";
 import moment from "moment";
-import { abi } from "@/lib/abi.json";
+import abi from "@/lib/abi.json";
 import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
 import CountUp from "react-countup";
 
@@ -207,7 +207,7 @@ const StakingDashboard = () => {
         }
         // Generate rewards text based on tier type
         let rewardsDescription: string;
-        let badges = [`Tier ${tier.id}`];
+        const badges = [`Tier ${tier.id}`];
         
         if (tier.isSliding && tier.minApy && tier.maxApy) {
           const minApyPercent = (tier.minApy / 100000).toFixed(2);
