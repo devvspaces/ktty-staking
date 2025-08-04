@@ -187,6 +187,10 @@ const StakingDashboard = () => {
       const response = await fetch("/api/get-tiers");
       const data = await response.json();
       const colors = ["#3182CE", "#38A169", "#DD6B20", "#319795", "#805AD5"];
+
+      // Sort tiers by min_stake
+      data.tiers.sort((a: any, b: any) => a.min_stake - b.min_stake);
+
       const tiers: StakingTier[] = data.tiers.map((tier: any, idx: number) => {
         const min_stake = tier.min_stake;
         const max_stake = tier.max_stake;
@@ -202,7 +206,7 @@ const StakingDashboard = () => {
         let range = `${formatNumberToHuman(min_stake)} - ${formatNumberToHuman(
           max_stake
         )} $KTTY`;
-        if (idx === data.tiers.length - 1) {
+        if (idx === data.tiers.length - 2) {
           range = `${formatNumberToHuman(min_stake)}+ $KTTY`;
         }
         // Generate rewards text based on tier type
