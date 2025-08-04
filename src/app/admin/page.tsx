@@ -132,7 +132,7 @@ import {
   parseEther,
 } from "viem";
 import { saigon, ronin } from "viem/chains";
-import { abi } from "@/lib/abi.json";
+import abi from "@/lib/abi.json";
 import { ERC20_ABI, formatNumberToHuman } from "@/lib/utils";
 import useCopy from "@/hook/useCopy";
 import moment from "moment";
