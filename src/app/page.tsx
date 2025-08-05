@@ -1625,8 +1625,6 @@ const StakingDashboard = () => {
                     width="full"
                     isDisabled={
                       !stakeAmount ||
-                     (selectedTier && parseFloat(stakeAmount.replace(/,/g, "")) <
-                        selectedTier.minStake) ||
                       parseFloat(stakeAmount.replace(/,/g, "")) >
                         userData.walletBalance ||
                       !isConnected
