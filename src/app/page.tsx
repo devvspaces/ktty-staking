@@ -242,7 +242,7 @@ const StakingDashboard = () => {
         };
       });
       // sort by id
-      tiers.sort((a, b) => a.id - b.id);
+      // tiers.sort((a, b) => a.id - b.id);
       setStakingTiers(tiers);
     } finally {
       setLoadingStakingTiers(false);
@@ -1625,6 +1625,8 @@ const StakingDashboard = () => {
                     width="full"
                     isDisabled={
                       !stakeAmount ||
+                      parseFloat(stakeAmount.replace(/,/g, "")) <
+                        stakingTiers[0].minStake ||
                       parseFloat(stakeAmount.replace(/,/g, "")) >
                         userData.walletBalance ||
                       !isConnected
