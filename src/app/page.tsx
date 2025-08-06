@@ -143,6 +143,8 @@ type Stake = {
   lockupPeriod: number;
   startDate: string;
   endDate: string;
+  start_time: number;
+  end_time: number;
   tier: number;
   status: StakeStatus;
   rewards: Record<string, number>;
@@ -335,17 +337,20 @@ const StakingDashboard = () => {
   };
 
   // Calculate time remaining for a stake
-  const calculateTimeRemaining = (endDate: string) => {
-    const end = new Date(endDate);
-    const now = new Date();
-    const diff = end.getTime() - now.getTime();
+  const calculateTimeRemaining = (end_time: number) => {
+    const endTime = end_time * 1000; // Convert to milliseconds
+    const currentTime = Date.now(); // Current UTC time in milliseconds
+    const diff = endTime - currentTime;
 
     if (diff <= 0) return "Completed";
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-    return `${days}d ${hours}h`;
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
   };
 
   // Handle stake details view
@@ -1370,7 +1375,7 @@ const StakingDashboard = () => {
                                           }
                                         >
                                           {calculateTimeRemaining(
-                                            stake.endDate
+                                            stake.end_time
                                           )}
                                         </Text>
                                       ) : (
@@ -1981,7 +1986,7 @@ const StakingDashboard = () => {
                     </Text>
                     {selectedStake.status === "active" && (
                       <Text fontSize="sm">
-                        {calculateTimeRemaining(selectedStake.endDate)}{" "}
+                        {calculateTimeRemaining(selectedStake.end_time)}{" "}
                         remaining
                       </Text>
                     )}

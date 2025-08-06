@@ -100,6 +100,8 @@ export async function GET(request: Request) {
         lockupPeriod: stake.tiers ? Number(stake.tiers.lockup_period) / (24 * 60 * 60) : 0,
         startDate: moment(new Date(Number(stake.start_time) * 1000)).format("YYYY-MM-DD HH:mm:ss"),
         endDate:  moment(new Date(Number(stake.end_time) * 1000)).format("YYYY-MM-DD HH:mm:ss"),
+        start_time: stake.start_time,
+        end_time: stake.end_time,
         tier: Number(stake.tier_id),
         status,
         rewards,
